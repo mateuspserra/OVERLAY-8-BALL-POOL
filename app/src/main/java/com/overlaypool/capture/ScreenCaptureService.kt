@@ -466,7 +466,7 @@ class ScreenCaptureService : Service() {
         val metrics = resources.displayMetrics
         screenDensity = metrics.densityDpi
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val bounds = getSystemService(WindowManager::class.java).currentWindowMetrics.bounds
+            val bounds = getSystemService(WindowManager::class.java).maximumWindowMetrics.bounds
             screenWidth = bounds.width()
             screenHeight = bounds.height()
         } else {

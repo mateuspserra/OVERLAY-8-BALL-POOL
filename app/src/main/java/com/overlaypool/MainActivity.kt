@@ -154,7 +154,7 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
             return
         }
 
-        startOverlayServices()
+        stopOverlayServices()
         requestScreenCapture()
     }
 
@@ -189,6 +189,12 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
         startService(Intent(this, FloatingControlService::class.java))
     }
 
+    private fun stopOverlayServices() {
+        stopService(Intent(this, OverlayService::class.java))
+        stopService(Intent(this, FloatingControlService::class.java))
+        stopService(Intent(this, ManualGuideService::class.java))
+    }
+
     private fun requestScreenCapture() {
         startActivityForResult(
             permissionManager.createScreenCaptureIntent(),
@@ -200,9 +206,7 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
         pendingStart = false
         pendingManualStart = false
         stopService(Intent(this, ScreenCaptureService::class.java))
-        stopService(Intent(this, OverlayService::class.java))
-        stopService(Intent(this, FloatingControlService::class.java))
-        stopService(Intent(this, ManualGuideService::class.java))
+        stopOverlayServices()
         DetectionStateStore.clearDetections()
         DetectionStateStore.updateStatus {
             it.copy(
@@ -248,6 +252,7 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
             REQUEST_MEDIA_PROJECTION -> {
                 pendingStart = false
                 if (resultCode == RESULT_OK && data != null) {
+                    startOverlayServices()
                     val intent = Intent(this, ScreenCaptureService::class.java)
                         .setAction(AppActions.ACTION_START_CAPTURE)
                         .putExtra(AppActions.EXTRA_MEDIA_PROJECTION_RESULT_CODE, resultCode)

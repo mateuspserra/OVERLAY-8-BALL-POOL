@@ -27,6 +27,8 @@ O intervalo inicial de captura e `250ms`. O app tenta iniciar o proximo frame as
 
 Builds `release` sao assinados. Para MVP/teste, o projeto usa `app/signing/mvp-release.keystore`, uma chave publica de teste mantida no repositorio para permitir instalar novas versoes por cima das antigas. Para producao, configure `RELEASE_STORE_FILE`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS` e `RELEASE_KEY_PASSWORD` em `local.properties` ou variaveis de ambiente.
 
+Em aparelhos Motorola com GameTime, voce pode adicionar o app como atalho lateral e iniciar a leitura durante o jogo. No Android 14+, o app solicita captura do display inteiro para evitar capturar apenas a janela flutuante do atalho.
+
 Quando o jogo bloquear captura de tela, use `Abrir guia manual` na tela inicial ou o botao de mira no controle flutuante. Ele desenha uma guia ajustavel por cima da tela sem depender de `MediaProjection`. Se o modo automatico receber frames protegidos seguidos, a captura e pausada e a guia manual e aberta automaticamente.
 
 O modo manual tem dois modos:
