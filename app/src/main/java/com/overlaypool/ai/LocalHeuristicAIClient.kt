@@ -87,6 +87,8 @@ private object PoolTableHeuristic {
         width: Int,
         bounds: Bounds
     ): DetectionResult? {
+        findCueBallByCircleScan(pixels, width, bounds)?.let { return it }
+
         val components = findComponents(
             bounds = bounds,
             stride = WHITE_COMPONENT_STRIDE,
@@ -104,6 +106,84 @@ private object PoolTableHeuristic {
             .filter { it.fillRatio >= 0.22f }
             .maxByOrNull { it.area * it.fillRatio }
             ?.toDetection("cue_ball", 0.88f)
+    }
+
+    private fun findCueBallByCircleScan(
+        pixels: IntArray,
+        width: Int,
+        bounds: Bounds
+    ): DetectionResult? {
+        val radius = (bounds.height / CUE_BALL_RADIUS_DIVISOR)
+            .coerceIn(CUE_BALL_MIN_RADIUS, CUE_BALL_MAX_RADIUS)
+        val radiusSquared = radius * radius
+        val innerRadiusSquared = (radius * CUE_BALL_INNER_RADIUS_FACTOR).toInt().let { it * it }
+        val step = (radius / 3).coerceAtLeast(2)
+
+        var best: CircleCandidate? = null
+
+        var centerY = bounds.top + radius
+        while (centerY <= bounds.bottom - radius) {
+            var centerX = bounds.left + radius
+            while (centerX <= bounds.right - radius) {
+                var diskPixels = 0
+                var whitePixels = 0
+                var innerWhitePixels = 0
+                var feltPixels = 0
+
+                var dy = -radius
+                while (dy <= radius) {
+                    val yy = centerY + dy
+                    var dx = -radius
+                    while (dx <= radius) {
+                        val distanceSquared = dx * dx + dy * dy
+                        if (distanceSquared <= radiusSquared) {
+                            val color = pixels[yy * width + centerX + dx]
+                            diskPixels++
+                            if (isCueWhite(color)) {
+                                whitePixels++
+                                if (distanceSquared <= innerRadiusSquared) {
+                                    innerWhitePixels++
+                                }
+                            }
+                            if (isFelt(color)) {
+                                feltPixels++
+                            }
+                        }
+                        dx += 2
+                    }
+                    dy += 2
+                }
+
+                if (diskPixels > 0) {
+                    val whiteRatio = whitePixels.toFloat() / diskPixels.toFloat()
+                    val innerWhiteRatio = innerWhitePixels.toFloat() / (diskPixels * CUE_BALL_INNER_AREA_RATIO)
+                    val feltRatio = feltPixels.toFloat() / diskPixels.toFloat()
+                    if (whiteRatio >= CUE_BALL_MIN_WHITE_RATIO &&
+                        innerWhiteRatio >= CUE_BALL_MIN_INNER_WHITE_RATIO &&
+                        feltRatio <= CUE_BALL_MAX_FELT_RATIO
+                    ) {
+                        val score = whiteRatio * 0.65f + innerWhiteRatio * 0.35f - feltRatio * 0.15f
+                        if (best == null || score > best.score) {
+                            best = CircleCandidate(centerX, centerY, radius, score)
+                        }
+                    }
+                }
+
+                centerX += step
+            }
+            centerY += step
+        }
+
+        return best?.let {
+            DetectionResult(
+                className = "cue_ball",
+                confidence = it.score.coerceIn(0.62f, 0.92f),
+                x = (it.centerX - it.radius).toFloat(),
+                y = (it.centerY - it.radius).toFloat(),
+                width = (it.radius * 2).toFloat(),
+                height = (it.radius * 2).toFloat()
+            )
+        }
     }
 
     private fun findBallCandidates(
@@ -303,8 +383,23 @@ private object PoolTableHeuristic {
         val fillRatio: Float = area.toFloat() / ((width * height).coerceAtLeast(1).toFloat())
     }
 
+    private data class CircleCandidate(
+        val centerX: Int,
+        val centerY: Int,
+        val radius: Int,
+        val score: Float
+    )
+
     private const val MIN_FELT_PIXELS = 800
     private const val WHITE_COMPONENT_STRIDE = 2
     private const val BALL_COMPONENT_STRIDE = 3
     private const val MAX_BALL_DETECTIONS = 16
+    private const val CUE_BALL_RADIUS_DIVISOR = 42
+    private const val CUE_BALL_MIN_RADIUS = 7
+    private const val CUE_BALL_MAX_RADIUS = 22
+    private const val CUE_BALL_INNER_RADIUS_FACTOR = 0.62f
+    private const val CUE_BALL_INNER_AREA_RATIO = 0.38f
+    private const val CUE_BALL_MIN_WHITE_RATIO = 0.30f
+    private const val CUE_BALL_MIN_INNER_WHITE_RATIO = 0.36f
+    private const val CUE_BALL_MAX_FELT_RATIO = 0.66f
 }

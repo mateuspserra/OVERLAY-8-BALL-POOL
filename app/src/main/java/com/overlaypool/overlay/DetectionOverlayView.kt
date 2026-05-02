@@ -15,6 +15,7 @@ class DetectionOverlayView(context: Context) : View(context), DetectionStateStor
     private var detections: List<DetectionResult> = emptyList()
     private var trajectory: TrajectoryResult? = null
     private var markingsVisible: Boolean = true
+    private var status: RuntimeStatus = DetectionStateStore.status
 
     private val cueBallPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -48,6 +49,15 @@ class DetectionOverlayView(context: Context) : View(context), DetectionStateStor
         textSize = 28f
         setShadowLayer(4f, 0f, 1f, Color.BLACK)
     }
+    private val statusTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 24f
+        setShadowLayer(5f, 0f, 1f, Color.BLACK)
+    }
+    private val statusBackgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(145, 0, 0, 0)
+        style = Paint.Style.FILL
+    }
 
     init {
         setWillNotDraw(false)
@@ -70,6 +80,7 @@ class DetectionOverlayView(context: Context) : View(context), DetectionStateStor
 
         drawDetections(canvas)
         drawTrajectory(canvas)
+        drawStatusIfNeeded(canvas)
     }
 
     private fun drawDetections(canvas: Canvas) {
@@ -121,6 +132,30 @@ class DetectionOverlayView(context: Context) : View(context), DetectionStateStor
         )
     }
 
+    private fun drawStatusIfNeeded(canvas: Canvas) {
+        if (detections.isNotEmpty() && status.lastError == null) return
+        if (!status.captureActive && status.lastError == null) return
+
+        val lines = listOf(
+            status.systemState,
+            status.lastDetection.take(72)
+        ).filter { it.isNotBlank() }
+        if (lines.isEmpty()) return
+
+        val padding = 12f
+        val lineHeight = 30f
+        val maxWidth = lines.maxOf { statusTextPaint.measureText(it) }
+        val left = 18f
+        val top = 78f
+        val right = left + maxWidth + padding * 2f
+        val bottom = top + lines.size * lineHeight + padding * 2f
+
+        canvas.drawRoundRect(left, top, right, bottom, 8f, 8f, statusBackgroundPaint)
+        lines.forEachIndexed { index, line ->
+            canvas.drawText(line, left + padding, top + padding + lineHeight * (index + 0.75f), statusTextPaint)
+        }
+    }
+
     override fun onDetectionsUpdated(
         detections: List<DetectionResult>,
         trajectory: TrajectoryResult?
@@ -131,6 +166,7 @@ class DetectionOverlayView(context: Context) : View(context), DetectionStateStor
     }
 
     override fun onStatusUpdated(status: RuntimeStatus) {
+        this.status = status
         markingsVisible = status.markingsVisible
         postInvalidate()
     }
