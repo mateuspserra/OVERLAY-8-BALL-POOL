@@ -215,6 +215,21 @@ class ScreenCaptureService : Service() {
             workingBitmap = downscaleForUpload(fullBitmap)
             if (workingBitmap !== fullBitmap) fullBitmap.recycle()
 
+            if (workingBitmap.isLikelyProtectedFrame()) {
+                DetectionStateStore.updateDetections(emptyList(), null)
+                DetectionStateStore.updateStatus {
+                    it.copy(
+                        aiBusy = false,
+                        aiConnected = BuildConfig.AI_ENDPOINT.isNotBlank(),
+                        systemState = "Captura bloqueada pelo app",
+                        lastDetection = "Frame preto/protegido. O app exibido provavelmente bloqueia MediaProjection.",
+                        lastApiLatencyMs = null,
+                        lastError = "Captura de tela bloqueada ou protegida"
+                    )
+                }
+                return
+            }
+
             DetectionStateStore.updateStatus {
                 it.copy(aiBusy = true, systemState = "Enviando frame para IA", lastError = null)
             }
@@ -365,6 +380,48 @@ class ScreenCaptureService : Service() {
         return Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
     }
 
+    private fun Bitmap.isLikelyProtectedFrame(): Boolean {
+        val stepX = (width / PROTECTED_FRAME_SAMPLE_COLUMNS).coerceAtLeast(1)
+        val stepY = (height / PROTECTED_FRAME_SAMPLE_ROWS).coerceAtLeast(1)
+        var sampled = 0
+        var veryDark = 0
+        var transparent = 0
+        var minLuma = 255
+        var maxLuma = 0
+
+        var y = stepY / 2
+        while (y < height) {
+            var x = stepX / 2
+            while (x < width) {
+                val pixel = getPixel(x, y)
+                val alpha = pixel ushr 24 and 0xff
+                val red = pixel ushr 16 and 0xff
+                val green = pixel ushr 8 and 0xff
+                val blue = pixel and 0xff
+                val luma = (red * 299 + green * 587 + blue * 114) / 1000
+
+                sampled++
+                if (alpha < 8) transparent++
+                if (luma <= PROTECTED_FRAME_DARK_LUMA) veryDark++
+                if (luma < minLuma) minLuma = luma
+                if (luma > maxLuma) maxLuma = luma
+
+                x += stepX
+            }
+            y += stepY
+        }
+
+        if (sampled == 0) return false
+
+        val darkRatio = veryDark.toFloat() / sampled.toFloat()
+        val transparentRatio = transparent.toFloat() / sampled.toFloat()
+        val lumaRange = maxLuma - minLuma
+
+        return transparentRatio >= PROTECTED_FRAME_BLOCKED_RATIO ||
+            darkRatio >= PROTECTED_FRAME_BLOCKED_RATIO ||
+            (darkRatio >= PROTECTED_FRAME_MOSTLY_DARK_RATIO && lumaRange <= PROTECTED_FRAME_LOW_VARIANCE)
+    }
+
     private fun readScreenMetrics() {
         val metrics = resources.displayMetrics
         screenDensity = metrics.densityDpi
@@ -411,5 +468,11 @@ class ScreenCaptureService : Service() {
     companion object {
         private const val NOTIFICATION_CHANNEL_ID = "screen_capture"
         private const val NOTIFICATION_ID = 4108
+        private const val PROTECTED_FRAME_SAMPLE_COLUMNS = 24
+        private const val PROTECTED_FRAME_SAMPLE_ROWS = 24
+        private const val PROTECTED_FRAME_DARK_LUMA = 8
+        private const val PROTECTED_FRAME_LOW_VARIANCE = 12
+        private const val PROTECTED_FRAME_BLOCKED_RATIO = 0.98f
+        private const val PROTECTED_FRAME_MOSTLY_DARK_RATIO = 0.92f
     }
 }

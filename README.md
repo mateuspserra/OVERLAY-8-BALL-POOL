@@ -30,6 +30,7 @@ Builds `release` sao assinados. Para MVP/teste, o projeto usa a debug key quando
 ## Observacoes
 
 - Alguns apps podem bloquear captura de tela e retornar imagem preta.
+- Quando isso acontece, o overlay ainda pode aparecer, mas a IA nao recebe pixels reais da tela; o app mostra o estado `Captura bloqueada pelo app`.
 - A trajetoria depende de referencia visual: `aim_line`, `cue_direction`, `target_ball` ou `ghost_ball`.
 - Para producao, use `App Android -> Backend proprio -> API de IA` para nao expor chave no APK.
 - A fisica avancada ainda nao foi implementada. O MVP desenha linha reta ate a primeira colisao detectada ou limite da tela.
