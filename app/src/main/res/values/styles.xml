@@ -6,4 +6,12 @@
         <item name="android:navigationBarColor">#FFFFFF</item>
         <item name="android:colorAccent">#0A7C66</item>
     </style>
+
+    <style name="TransparentCaptureTheme" parent="@android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:colorAccent">#0A7C66</item>
+    </style>
 </resources>

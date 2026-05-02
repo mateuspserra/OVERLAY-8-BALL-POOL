@@ -52,6 +52,7 @@ class ScreenCaptureService : Service() {
     private var screenDensity = 0
     private var protectedFrameCount = 0
     private var keepBlockedStatusOnStop = false
+    private var captureStartedAtMs = 0L
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -135,6 +136,7 @@ class ScreenCaptureService : Service() {
         stopping.set(false)
         protectedFrameCount = 0
         keepBlockedStatusOnStop = false
+        captureStartedAtMs = SystemClock.elapsedRealtime()
 
         readScreenMetrics()
 
@@ -221,6 +223,22 @@ class ScreenCaptureService : Service() {
             if (workingBitmap !== fullBitmap) fullBitmap.recycle()
 
             if (workingBitmap.isLikelyProtectedFrame()) {
+                if (isInInitialCaptureGracePeriod()) {
+                    DetectionStateStore.updateDetections(emptyList(), null)
+                    DetectionStateStore.updateStatus {
+                        it.copy(
+                            captureActive = true,
+                            aiBusy = false,
+                            aiConnected = isAiConfigured(),
+                            systemState = "Aguardando tela do jogo",
+                            lastDetection = "Tela preta inicial ignorada enquanto o jogo volta ao primeiro plano.",
+                            lastApiLatencyMs = null,
+                            lastError = null
+                        )
+                    }
+                    return
+                }
+
                 protectedFrameCount += 1
                 val shouldPauseCapture = protectedFrameCount >= PROTECTED_FRAME_STOP_THRESHOLD
                 DetectionStateStore.updateDetections(emptyList(), null)
@@ -420,6 +438,10 @@ class ScreenCaptureService : Service() {
         }
     }
 
+    private fun isInInitialCaptureGracePeriod(): Boolean {
+        return SystemClock.elapsedRealtime() - captureStartedAtMs < INITIAL_CAPTURE_GRACE_PERIOD_MS
+    }
+
     private fun Bitmap.isLikelyProtectedFrame(): Boolean {
         val stepX = (width / PROTECTED_FRAME_SAMPLE_COLUMNS).coerceAtLeast(1)
         val stepY = (height / PROTECTED_FRAME_SAMPLE_ROWS).coerceAtLeast(1)
@@ -514,6 +536,7 @@ class ScreenCaptureService : Service() {
         private const val PROTECTED_FRAME_LOW_VARIANCE = 12
         private const val PROTECTED_FRAME_BLOCKED_RATIO = 0.98f
         private const val PROTECTED_FRAME_MOSTLY_DARK_RATIO = 0.92f
-        private const val PROTECTED_FRAME_STOP_THRESHOLD = 3
+        private const val PROTECTED_FRAME_STOP_THRESHOLD = 10
+        private const val INITIAL_CAPTURE_GRACE_PERIOD_MS = 3500L
     }
 }

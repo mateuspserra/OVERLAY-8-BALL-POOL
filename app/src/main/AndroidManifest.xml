@@ -24,6 +24,12 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".CaptureRequestActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/TransparentCaptureTheme" />
+
         <service
             android:name=".overlay.OverlayService"
             android:exported="false" />

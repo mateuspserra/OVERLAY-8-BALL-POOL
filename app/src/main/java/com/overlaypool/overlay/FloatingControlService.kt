@@ -10,6 +10,7 @@ import android.view.Gravity
 import android.view.WindowManager
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import com.overlaypool.CaptureRequestActivity
 import com.overlaypool.R
 import com.overlaypool.capture.ScreenCaptureService
 import com.overlaypool.core.AppActions
@@ -21,6 +22,7 @@ import com.overlaypool.model.TrajectoryResult
 class FloatingControlService : Service(), DetectionStateStore.Listener {
     private var windowManager: WindowManager? = null
     private var controlView: LinearLayout? = null
+    private var captureButton: ImageButton? = null
     private var visibilityButton: ImageButton? = null
 
     override fun onCreate() {
@@ -65,13 +67,23 @@ class FloatingControlService : Service(), DetectionStateStore.Listener {
             setPadding(padding, padding, padding, padding)
         }
 
+        captureButton = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_play_arrow)
+            contentDescription = "Iniciar captura"
+            setBackgroundResource(R.drawable.floating_button_bg)
+            setOnClickListener { requestCapture() }
+        }
+        root.addView(captureButton, LinearLayout.LayoutParams(buttonSize, buttonSize))
+
         visibilityButton = ImageButton(this).apply {
             setImageResource(R.drawable.ic_visibility)
             contentDescription = "Mostrar ou esconder marcacoes"
             setBackgroundResource(R.drawable.floating_button_bg)
             setOnClickListener { toggleMarkings() }
         }
-        root.addView(visibilityButton, LinearLayout.LayoutParams(buttonSize, buttonSize))
+        root.addView(visibilityButton, LinearLayout.LayoutParams(buttonSize, buttonSize).apply {
+            leftMargin = (8 * density).toInt()
+        })
 
         val guideButton = ImageButton(this).apply {
             setImageResource(R.drawable.ic_guide)
@@ -119,6 +131,23 @@ class FloatingControlService : Service(), DetectionStateStore.Listener {
         }
     }
 
+    private fun requestCapture() {
+        runCatching {
+            startActivity(
+                Intent(this, CaptureRequestActivity::class.java)
+                    .setAction(AppActions.ACTION_REQUEST_CAPTURE)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }.onFailure { throwable ->
+            DetectionStateStore.updateStatus {
+                it.copy(
+                    systemState = "Erro ao iniciar captura",
+                    lastError = throwable.message ?: throwable.javaClass.simpleName
+                )
+            }
+        }
+    }
+
     private fun toggleManualGuide() {
         runCatching {
             startService(
@@ -154,6 +183,8 @@ class FloatingControlService : Service(), DetectionStateStore.Listener {
             visibilityButton?.setImageResource(
                 if (status.markingsVisible) R.drawable.ic_visibility else R.drawable.ic_visibility_off
             )
+            captureButton?.isEnabled = !status.captureActive
+            captureButton?.alpha = if (status.captureActive) 0.45f else 1f
         }
     }
 }

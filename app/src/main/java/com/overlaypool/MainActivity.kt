@@ -35,7 +35,9 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
 
     private var pendingStart = false
     private var pendingManualStart = false
+    private var pendingPrepareStart = false
     private var notificationPermissionRequested = false
+    private var delayedCaptureStart: Runnable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,6 +81,12 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
             setOnClickListener { beginPermissionFlow() }
         }
         root.addView(startButton, matchWidthParams())
+
+        val prepareButton = Button(this).apply {
+            text = "Pre-iniciar overlay"
+            setOnClickListener { prepareOverlayFlow() }
+        }
+        root.addView(prepareButton, matchWidthParams())
 
         val manualGuideButton = Button(this).apply {
             text = "Abrir guia manual"
@@ -139,6 +147,7 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
     private fun beginPermissionFlow() {
         pendingStart = true
         pendingManualStart = false
+        pendingPrepareStart = false
         DetectionStateStore.updateStatus {
             it.copy(systemState = "Aguardando permissoes", lastError = null)
         }
@@ -158,9 +167,42 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
         requestScreenCapture()
     }
 
+    private fun prepareOverlayFlow() {
+        pendingStart = false
+        pendingManualStart = false
+        pendingPrepareStart = true
+        DetectionStateStore.updateStatus {
+            it.copy(systemState = "Preparando overlay", lastError = null)
+        }
+
+        if (!permissionManager.hasOverlayPermission()) {
+            permissionManager.requestOverlayPermission(REQUEST_OVERLAY_PERMISSION)
+            return
+        }
+
+        if (!permissionManager.hasNotificationPermission() && !notificationPermissionRequested) {
+            notificationPermissionRequested = true
+            permissionManager.requestNotificationPermission(REQUEST_NOTIFICATION_PERMISSION)
+            return
+        }
+
+        pendingPrepareStart = false
+        startOverlayServices()
+        DetectionStateStore.clearDetections()
+        DetectionStateStore.updateStatus {
+            it.copy(
+                captureActive = false,
+                aiBusy = false,
+                systemState = "Overlay pre-iniciado",
+                lastDetection = "Entre no jogo e toque em iniciar captura no controle flutuante."
+            )
+        }
+    }
+
     private fun startManualGuideFlow() {
         pendingStart = false
         pendingManualStart = true
+        pendingPrepareStart = false
         DetectionStateStore.updateStatus {
             it.copy(systemState = "Aguardando permissao de sobreposicao", lastError = null)
         }
@@ -205,6 +247,9 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
     private fun stopReading() {
         pendingStart = false
         pendingManualStart = false
+        pendingPrepareStart = false
+        delayedCaptureStart?.let { mainHandler.removeCallbacks(it) }
+        delayedCaptureStart = null
         stopService(Intent(this, ScreenCaptureService::class.java))
         stopOverlayServices()
         DetectionStateStore.clearDetections()
@@ -222,7 +267,19 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
         super.onActivityResult(requestCode, resultCode, data)
         when (requestCode) {
             REQUEST_OVERLAY_PERMISSION -> {
-                if (pendingManualStart) {
+                if (pendingPrepareStart) {
+                    if (permissionManager.hasOverlayPermission()) {
+                        prepareOverlayFlow()
+                    } else {
+                        pendingPrepareStart = false
+                        DetectionStateStore.updateStatus {
+                            it.copy(
+                                systemState = "Permissao de sobreposicao pendente",
+                                lastError = "Ative a sobreposicao para pre-iniciar"
+                            )
+                        }
+                    }
+                } else if (pendingManualStart) {
                     if (permissionManager.hasOverlayPermission()) {
                         startManualGuideFlow()
                     } else {
@@ -252,16 +309,7 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
             REQUEST_MEDIA_PROJECTION -> {
                 pendingStart = false
                 if (resultCode == RESULT_OK && data != null) {
-                    startOverlayServices()
-                    val intent = Intent(this, ScreenCaptureService::class.java)
-                        .setAction(AppActions.ACTION_START_CAPTURE)
-                        .putExtra(AppActions.EXTRA_MEDIA_PROJECTION_RESULT_CODE, resultCode)
-                        .putExtra(AppActions.EXTRA_MEDIA_PROJECTION_DATA, data)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        startForegroundService(intent)
-                    } else {
-                        startService(intent)
-                    }
+                    startCaptureAfterReturningToGame(resultCode, data)
                 } else {
                     stopService(Intent(this, OverlayService::class.java))
                     stopService(Intent(this, FloatingControlService::class.java))
@@ -278,6 +326,35 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
         }
     }
 
+    private fun startCaptureAfterReturningToGame(resultCode: Int, data: Intent) {
+        val captureIntent = Intent(this, ScreenCaptureService::class.java)
+            .setAction(AppActions.ACTION_START_CAPTURE)
+            .putExtra(AppActions.EXTRA_MEDIA_PROJECTION_RESULT_CODE, resultCode)
+            .putExtra(AppActions.EXTRA_MEDIA_PROJECTION_DATA, data)
+
+        DetectionStateStore.updateStatus {
+            it.copy(
+                systemState = "Voltando ao jogo antes da captura",
+                lastDetection = "A captura comeca apos a tela do jogo aparecer.",
+                lastError = null
+            )
+        }
+
+        delayedCaptureStart?.let { mainHandler.removeCallbacks(it) }
+        val runnable = Runnable {
+            delayedCaptureStart = null
+            startOverlayServices()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(captureIntent)
+            } else {
+                startService(captureIntent)
+            }
+        }
+        delayedCaptureStart = runnable
+        moveTaskToBack(true)
+        mainHandler.postDelayed(runnable, CAPTURE_START_DELAY_MS)
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -286,6 +363,8 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_NOTIFICATION_PERMISSION && pendingStart) {
             beginPermissionFlow()
+        } else if (requestCode == REQUEST_NOTIFICATION_PERMISSION && pendingPrepareStart) {
+            prepareOverlayFlow()
         }
     }
 
@@ -322,5 +401,6 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
         private const val REQUEST_OVERLAY_PERMISSION = 1001
         private const val REQUEST_MEDIA_PROJECTION = 1002
         private const val REQUEST_NOTIFICATION_PERMISSION = 1003
+        private const val CAPTURE_START_DELAY_MS = 900L
     }
 }
