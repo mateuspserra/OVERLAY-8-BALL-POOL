@@ -23,7 +23,7 @@ O app nao abre outro aplicativo dentro dele, nao usa WebView e nao incorpora out
 3. Configure `AI_ENDPOINT`, `AI_PROVIDER` e, se necessario, `AI_API_KEY`.
 4. Rode o app em um dispositivo real. Emuladores podem limitar a captura de tela dependendo da imagem.
 
-O intervalo inicial de captura e `1000ms`. O app nao envia novo frame enquanto a requisicao anterior ainda esta em andamento.
+O intervalo inicial de captura e `250ms`. O app tenta iniciar o proximo frame assim que a janela minima permitir, mas nao envia novo frame enquanto a requisicao anterior ainda esta em andamento.
 
 ## Observacoes
 

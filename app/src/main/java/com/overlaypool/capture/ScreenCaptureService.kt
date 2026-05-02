@@ -20,6 +20,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
+import android.os.SystemClock
 import android.view.WindowManager
 import com.overlaypool.BuildConfig
 import com.overlaypool.MainActivity
@@ -184,14 +185,19 @@ class ScreenCaptureService : Service() {
 
     private fun scheduleCapture() {
         val handler = captureHandler ?: return
-        val intervalMs = BuildConfig.CAPTURE_INTERVAL_MS.coerceAtLeast(300L)
+        val intervalMs = BuildConfig.CAPTURE_INTERVAL_MS.coerceAtLeast(100L)
         captureRunnable = object : Runnable {
             override fun run() {
+                val startedAt = SystemClock.elapsedRealtime()
                 captureAndProcessFrame()
-                handler.postDelayed(this, intervalMs)
+                val elapsedMs = SystemClock.elapsedRealtime() - startedAt
+                val nextDelayMs = (intervalMs - elapsedMs).coerceAtLeast(0L)
+                if (!stopping.get()) {
+                    handler.postDelayed(this, nextDelayMs)
+                }
             }
         }
-        handler.postDelayed(captureRunnable!!, 500L)
+        handler.post(captureRunnable!!)
     }
 
     private fun captureAndProcessFrame() {
