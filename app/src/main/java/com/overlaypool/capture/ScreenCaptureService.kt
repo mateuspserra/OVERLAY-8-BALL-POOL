@@ -30,6 +30,7 @@ import com.overlaypool.ai.AIClientFactory
 import com.overlaypool.ai.DetectionProcessor
 import com.overlaypool.core.AppActions
 import com.overlaypool.core.DetectionStateStore
+import com.overlaypool.overlay.ManualGuideService
 import com.overlaypool.trajectory.TrajectoryEngine
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToInt
@@ -234,7 +235,7 @@ class ScreenCaptureService : Service() {
                             "Captura bloqueada pelo app"
                         },
                         lastDetection = if (shouldPauseCapture) {
-                            "A tela veio preta por varios frames. Use a guia manual; o modo automatico nao consegue detectar sem pixels reais."
+                            "A tela veio preta por varios frames. Abrindo guia manual; o modo automatico nao consegue detectar sem pixels reais."
                         } else {
                             "Frame preto/protegido. O app exibido provavelmente bloqueia MediaProjection."
                         },
@@ -244,6 +245,7 @@ class ScreenCaptureService : Service() {
                 }
                 if (shouldPauseCapture) {
                     keepBlockedStatusOnStop = true
+                    openManualGuideFallback()
                     stopCapture()
                     stopSelf()
                 }
@@ -410,6 +412,12 @@ class ScreenCaptureService : Service() {
             provider == "local_heuristic" ||
             provider == "local" ||
             provider == "offline"
+    }
+
+    private fun openManualGuideFallback() {
+        runCatching {
+            startService(Intent(this, ManualGuideService::class.java))
+        }
     }
 
     private fun Bitmap.isLikelyProtectedFrame(): Boolean {

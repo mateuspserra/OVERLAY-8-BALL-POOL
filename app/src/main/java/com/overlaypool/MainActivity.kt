@@ -34,6 +34,7 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
     private lateinit var systemStateStatus: TextView
 
     private var pendingStart = false
+    private var pendingManualStart = false
     private var notificationPermissionRequested = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,6 +79,12 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
             setOnClickListener { beginPermissionFlow() }
         }
         root.addView(startButton, matchWidthParams())
+
+        val manualGuideButton = Button(this).apply {
+            text = "Abrir guia manual"
+            setOnClickListener { startManualGuideFlow() }
+        }
+        root.addView(manualGuideButton, matchWidthParams())
 
         val stopButton = Button(this).apply {
             text = "Parar leitura"
@@ -131,6 +138,7 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
 
     private fun beginPermissionFlow() {
         pendingStart = true
+        pendingManualStart = false
         DetectionStateStore.updateStatus {
             it.copy(systemState = "Aguardando permissoes", lastError = null)
         }
@@ -150,6 +158,32 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
         requestScreenCapture()
     }
 
+    private fun startManualGuideFlow() {
+        pendingStart = false
+        pendingManualStart = true
+        DetectionStateStore.updateStatus {
+            it.copy(systemState = "Aguardando permissao de sobreposicao", lastError = null)
+        }
+
+        if (!permissionManager.hasOverlayPermission()) {
+            permissionManager.requestOverlayPermission(REQUEST_OVERLAY_PERMISSION)
+            return
+        }
+
+        pendingManualStart = false
+        startOverlayServices()
+        startService(Intent(this, ManualGuideService::class.java))
+        DetectionStateStore.clearDetections()
+        DetectionStateStore.updateStatus {
+            it.copy(
+                captureActive = false,
+                aiBusy = false,
+                systemState = "Guia manual aberta",
+                lastDetection = "Modo manual ativo; MediaProjection nao e necessario."
+            )
+        }
+    }
+
     private fun startOverlayServices() {
         startService(Intent(this, OverlayService::class.java))
         startService(Intent(this, FloatingControlService::class.java))
@@ -164,6 +198,7 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
 
     private fun stopReading() {
         pendingStart = false
+        pendingManualStart = false
         stopService(Intent(this, ScreenCaptureService::class.java))
         stopService(Intent(this, OverlayService::class.java))
         stopService(Intent(this, FloatingControlService::class.java))
@@ -183,7 +218,19 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
         super.onActivityResult(requestCode, resultCode, data)
         when (requestCode) {
             REQUEST_OVERLAY_PERMISSION -> {
-                if (pendingStart) {
+                if (pendingManualStart) {
+                    if (permissionManager.hasOverlayPermission()) {
+                        startManualGuideFlow()
+                    } else {
+                        pendingManualStart = false
+                        DetectionStateStore.updateStatus {
+                            it.copy(
+                                systemState = "Permissao de sobreposicao pendente",
+                                lastError = "Ative a sobreposicao para usar a guia manual"
+                            )
+                        }
+                    }
+                } else if (pendingStart) {
                     if (permissionManager.hasOverlayPermission()) {
                         beginPermissionFlow()
                     } else {
