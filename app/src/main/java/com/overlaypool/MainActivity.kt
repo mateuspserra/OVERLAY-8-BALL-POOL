@@ -19,6 +19,7 @@ import com.overlaypool.core.RuntimeStatus
 import com.overlaypool.model.DetectionResult
 import com.overlaypool.model.TrajectoryResult
 import com.overlaypool.overlay.FloatingControlService
+import com.overlaypool.overlay.ManualGuideService
 import com.overlaypool.overlay.OverlayService
 import com.overlaypool.permissions.PermissionManager
 
@@ -166,6 +167,7 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
         stopService(Intent(this, ScreenCaptureService::class.java))
         stopService(Intent(this, OverlayService::class.java))
         stopService(Intent(this, FloatingControlService::class.java))
+        stopService(Intent(this, ManualGuideService::class.java))
         DetectionStateStore.clearDetections()
         DetectionStateStore.updateStatus {
             it.copy(

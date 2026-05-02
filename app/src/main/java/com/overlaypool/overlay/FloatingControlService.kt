@@ -73,6 +73,16 @@ class FloatingControlService : Service(), DetectionStateStore.Listener {
         }
         root.addView(visibilityButton, LinearLayout.LayoutParams(buttonSize, buttonSize))
 
+        val guideButton = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_guide)
+            contentDescription = "Abrir guia manual"
+            setBackgroundResource(R.drawable.floating_button_bg)
+            setOnClickListener { toggleManualGuide() }
+        }
+        root.addView(guideButton, LinearLayout.LayoutParams(buttonSize, buttonSize).apply {
+            leftMargin = (8 * density).toInt()
+        })
+
         val stopButton = ImageButton(this).apply {
             setImageResource(R.drawable.ic_stop)
             contentDescription = "Parar leitura"
@@ -109,7 +119,12 @@ class FloatingControlService : Service(), DetectionStateStore.Listener {
         }
     }
 
+    private fun toggleManualGuide() {
+        runCatching { startService(Intent(this, ManualGuideService::class.java)) }
+    }
+
     private fun stopReading() {
+        stopService(Intent(this, ManualGuideService::class.java))
         stopService(Intent(this, ScreenCaptureService::class.java))
         stopService(Intent(this, OverlayService::class.java))
         DetectionStateStore.clearDetections()

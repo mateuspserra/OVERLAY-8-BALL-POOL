@@ -27,6 +27,8 @@ O intervalo inicial de captura e `250ms`. O app tenta iniciar o proximo frame as
 
 Builds `release` sao assinados. Para MVP/teste, o projeto usa `app/signing/mvp-release.keystore`, uma chave publica de teste mantida no repositorio para permitir instalar novas versoes por cima das antigas. Para producao, configure `RELEASE_STORE_FILE`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS` e `RELEASE_KEY_PASSWORD` em `local.properties` ou variaveis de ambiente.
 
+Quando o jogo bloquear captura de tela, use o botao de mira no controle flutuante para abrir o modo manual. Ele desenha uma guia ajustavel por cima da tela sem depender de `MediaProjection`.
+
 ## Observacoes
 
 - Alguns apps podem bloquear captura de tela e retornar imagem preta.

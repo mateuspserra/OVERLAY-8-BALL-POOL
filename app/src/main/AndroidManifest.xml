@@ -33,6 +33,10 @@
             android:exported="false" />
 
         <service
+            android:name=".overlay.ManualGuideService"
+            android:exported="false" />
+
+        <service
             android:name=".capture.ScreenCaptureService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
