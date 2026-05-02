@@ -20,7 +20,7 @@ O app nao abre outro aplicativo dentro dele, nao usa WebView e nao incorpora out
 
 1. Abra o projeto no Android Studio.
 2. Copie `local.properties.example` para `local.properties`.
-3. Configure `AI_ENDPOINT`, `AI_PROVIDER` e, se necessario, `AI_API_KEY`.
+3. O modo padrao `AI_PROVIDER=local_heuristic` permite testar marcacoes sem backend. Para API externa, configure `AI_ENDPOINT`, `AI_PROVIDER` e, se necessario, `AI_API_KEY`.
 4. Rode o app em um dispositivo real. Emuladores podem limitar a captura de tela dependendo da imagem.
 
 O intervalo inicial de captura e `250ms`. O app tenta iniciar o proximo frame assim que a janela minima permitir, mas nao envia novo frame enquanto a requisicao anterior ainda esta em andamento.

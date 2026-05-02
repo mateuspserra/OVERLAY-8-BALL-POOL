@@ -174,7 +174,7 @@ class ScreenCaptureService : Service() {
         DetectionStateStore.updateStatus {
             it.copy(
                 captureActive = true,
-                aiConnected = BuildConfig.AI_ENDPOINT.isNotBlank(),
+                aiConnected = isAiConfigured(),
                 systemState = "Captura ativa",
                 lastError = null
             )
@@ -220,7 +220,7 @@ class ScreenCaptureService : Service() {
                 DetectionStateStore.updateStatus {
                     it.copy(
                         aiBusy = false,
-                        aiConnected = BuildConfig.AI_ENDPOINT.isNotBlank(),
+                        aiConnected = isAiConfigured(),
                         systemState = "Captura bloqueada pelo app",
                         lastDetection = "Frame preto/protegido. O app exibido provavelmente bloqueia MediaProjection.",
                         lastApiLatencyMs = null,
@@ -246,7 +246,7 @@ class ScreenCaptureService : Service() {
             val trajectory = TrajectoryEngine.calculate(detections, screenWidth, screenHeight)
             DetectionStateStore.updateDetections(detections, trajectory)
 
-            val endpointConfigured = BuildConfig.AI_ENDPOINT.isNotBlank()
+            val endpointConfigured = isAiConfigured()
             val nextState = when {
                 !endpointConfigured -> "IA desconectada"
                 response.error != null -> "Erro na API"
@@ -378,6 +378,14 @@ class ScreenCaptureService : Service() {
         val targetWidth = (bitmap.width * scale).roundToInt().coerceAtLeast(1)
         val targetHeight = (bitmap.height * scale).roundToInt().coerceAtLeast(1)
         return Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
+    }
+
+    private fun isAiConfigured(): Boolean {
+        val provider = BuildConfig.AI_PROVIDER.trim().lowercase()
+        return BuildConfig.AI_ENDPOINT.isNotBlank() ||
+            provider == "local_heuristic" ||
+            provider == "local" ||
+            provider == "offline"
     }
 
     private fun Bitmap.isLikelyProtectedFrame(): Boolean {

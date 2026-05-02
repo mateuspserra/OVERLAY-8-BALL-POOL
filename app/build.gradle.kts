@@ -54,7 +54,7 @@ android {
 
         buildConfigField("String", "AI_ENDPOINT", "\"${escapedStringConfig("AI_ENDPOINT")}\"")
         buildConfigField("String", "AI_API_KEY", "\"${escapedStringConfig("AI_API_KEY")}\"")
-        buildConfigField("String", "AI_PROVIDER", "\"${escapedStringConfig("AI_PROVIDER").ifEmpty { "generic_json" }}\"")
+        buildConfigField("String", "AI_PROVIDER", "\"${escapedStringConfig("AI_PROVIDER").ifEmpty { "local_heuristic" }}\"")
         buildConfigField("float", "MIN_DETECTION_CONFIDENCE", "${floatConfig("MIN_DETECTION_CONFIDENCE", "0.55")}f")
         buildConfigField("long", "CAPTURE_INTERVAL_MS", "${longConfig("CAPTURE_INTERVAL_MS", "250")}L")
         buildConfigField("int", "MAX_UPLOAD_IMAGE_SIZE", readConfig("MAX_UPLOAD_IMAGE_SIZE").toIntOrNull()?.toString() ?: "960")

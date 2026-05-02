@@ -2,6 +2,9 @@
 # Nunca publique chaves reais no repositorio.
 
 # Backend proprio recomendado:
+# AI_PROVIDER=local_heuristic
+#
+# Para backend/API externa:
 # AI_PROVIDER=generic_json
 # AI_ENDPOINT=https://seu-backend.example.com/detect
 # AI_API_KEY=

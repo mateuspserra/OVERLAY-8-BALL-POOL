@@ -7,6 +7,12 @@ O app usa a interface `AIClient`, criada por `AIClientFactory`. A implementacao 
 Defina em `local.properties`:
 
 ```properties
+AI_PROVIDER=local_heuristic
+```
+
+Esse modo local usa uma heuristica simples para validar o overlay no 8 Ball Pool sem backend externo. Para usar API externa:
+
+```properties
 AI_PROVIDER=generic_json
 AI_ENDPOINT=https://seu-backend.example.com/detect
 AI_API_KEY=
