@@ -29,6 +29,11 @@ Builds `release` sao assinados. Para MVP/teste, o projeto usa `app/signing/mvp-r
 
 Quando o jogo bloquear captura de tela, use o botao de mira no controle flutuante para abrir o modo manual. Ele desenha uma guia ajustavel por cima da tela sem depender de `MediaProjection`.
 
+O modo manual tem dois modos:
+
+- `NORMAL`: circulo ajustavel com linhas para as seis cacapas estimadas.
+- `TABELA`: dois pontos ajustaveis para simular uma jogada de tabela. Ao encostar o ponto branco na borda da mesa, o app calcula a primeira reflexao e pode mostrar uma segunda linha refletida.
+
 ## Observacoes
 
 - Alguns apps podem bloquear captura de tela e retornar imagem preta.

@@ -2,9 +2,11 @@
 .idea/
 .kotlin/
 .tools/
+.inspect/
 build/
 local.properties
 captures/
+*.zip
 *.iml
 *.apk
 *.aab
