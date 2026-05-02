@@ -49,6 +49,8 @@ class ScreenCaptureService : Service() {
     private var screenWidth = 0
     private var screenHeight = 0
     private var screenDensity = 0
+    private var protectedFrameCount = 0
+    private var keepBlockedStatusOnStop = false
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -130,6 +132,8 @@ class ScreenCaptureService : Service() {
     private fun startCapture(resultCode: Int, resultData: Intent) {
         if (mediaProjection != null) return
         stopping.set(false)
+        protectedFrameCount = 0
+        keepBlockedStatusOnStop = false
 
         readScreenMetrics()
 
@@ -216,19 +220,37 @@ class ScreenCaptureService : Service() {
             if (workingBitmap !== fullBitmap) fullBitmap.recycle()
 
             if (workingBitmap.isLikelyProtectedFrame()) {
+                protectedFrameCount += 1
+                val shouldPauseCapture = protectedFrameCount >= PROTECTED_FRAME_STOP_THRESHOLD
                 DetectionStateStore.updateDetections(emptyList(), null)
                 DetectionStateStore.updateStatus {
                     it.copy(
+                        captureActive = !shouldPauseCapture,
                         aiBusy = false,
                         aiConnected = isAiConfigured(),
-                        systemState = "Captura bloqueada pelo app",
-                        lastDetection = "Frame preto/protegido. O app exibido provavelmente bloqueia MediaProjection.",
+                        systemState = if (shouldPauseCapture) {
+                            "Captura pausada: tela protegida"
+                        } else {
+                            "Captura bloqueada pelo app"
+                        },
+                        lastDetection = if (shouldPauseCapture) {
+                            "A tela veio preta por varios frames. Use a guia manual; o modo automatico nao consegue detectar sem pixels reais."
+                        } else {
+                            "Frame preto/protegido. O app exibido provavelmente bloqueia MediaProjection."
+                        },
                         lastApiLatencyMs = null,
                         lastError = "Captura de tela bloqueada ou protegida"
                     )
                 }
+                if (shouldPauseCapture) {
+                    keepBlockedStatusOnStop = true
+                    stopCapture()
+                    stopSelf()
+                }
                 return
             }
+
+            protectedFrameCount = 0
 
             DetectionStateStore.updateStatus {
                 it.copy(aiBusy = true, systemState = "Enviando frame para IA", lastError = null)
@@ -311,12 +333,14 @@ class ScreenCaptureService : Service() {
         captureThread = null
         captureHandler = null
 
-        DetectionStateStore.updateStatus {
-            it.copy(
-                captureActive = false,
-                aiBusy = false,
-                systemState = "Servico encerrado"
-            )
+        if (!keepBlockedStatusOnStop) {
+            DetectionStateStore.updateStatus {
+                it.copy(
+                    captureActive = false,
+                    aiBusy = false,
+                    systemState = "Servico encerrado"
+                )
+            }
         }
     }
 
@@ -482,5 +506,6 @@ class ScreenCaptureService : Service() {
         private const val PROTECTED_FRAME_LOW_VARIANCE = 12
         private const val PROTECTED_FRAME_BLOCKED_RATIO = 0.98f
         private const val PROTECTED_FRAME_MOSTLY_DARK_RATIO = 0.92f
+        private const val PROTECTED_FRAME_STOP_THRESHOLD = 3
     }
 }

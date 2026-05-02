@@ -15,6 +15,7 @@ import android.provider.Settings
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import com.overlaypool.core.AppActions
 import com.overlaypool.core.DetectionStateStore
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -24,15 +25,28 @@ import kotlin.math.min
 class ManualGuideService : Service() {
     private var windowManager: WindowManager? = null
     private var guideView: ManualGuideView? = null
+    private var guideParams: WindowManager.LayoutParams? = null
 
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        createGuide()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        createGuide()
+        when (intent?.action) {
+            AppActions.ACTION_CLOSE_MANUAL_GUIDE -> {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            AppActions.ACTION_TOGGLE_MANUAL_GUIDE -> {
+                if (guideView == null) {
+                    createGuide()
+                } else {
+                    setGuideLocked(!(guideView?.isInputLocked ?: false))
+                }
+            }
+            else -> createGuide()
+        }
         return START_STICKY
     }
 
@@ -41,6 +55,7 @@ class ManualGuideService : Service() {
             runCatching { windowManager?.removeView(view) }
         }
         guideView = null
+        guideParams = null
         DetectionStateStore.updateStatus {
             it.copy(systemState = "Guia manual fechado")
         }
@@ -60,10 +75,7 @@ class ManualGuideService : Service() {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            guideWindowFlags(locked = false),
             PixelFormat.TRANSLUCENT
         )
 
@@ -72,28 +84,64 @@ class ManualGuideService : Service() {
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
 
-        val view = ManualGuideView(this) { stopSelf() }
+        val view = ManualGuideView(
+            context = this,
+            onClose = { stopSelf() },
+            onLockChanged = { locked -> setGuideLocked(locked) }
+        )
         runCatching {
             windowManager?.addView(view, params)
             guideView = view
+            guideParams = params
             DetectionStateStore.updateStatus {
-                it.copy(systemState = "Guia manual ativo")
+                it.copy(systemState = "Guia manual em ajuste")
             }
         }.onFailure {
             stopSelf()
         }
     }
+
+    private fun setGuideLocked(locked: Boolean) {
+        val view = guideView ?: return
+        val params = guideParams ?: return
+        view.setInputLocked(locked)
+        params.flags = guideWindowFlags(locked)
+        runCatching { windowManager?.updateViewLayout(view, params) }
+        DetectionStateStore.updateStatus {
+            it.copy(
+                systemState = if (locked) {
+                    "Guia manual travado; toque liberado para o jogo"
+                } else {
+                    "Guia manual em ajuste"
+                }
+            )
+        }
+    }
+
+    private fun guideWindowFlags(locked: Boolean): Int {
+        var flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        if (locked) {
+            flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
+        return flags
+    }
 }
 
 private class ManualGuideView(
     context: android.content.Context,
-    private val onClose: () -> Unit
+    private val onClose: () -> Unit,
+    private val onLockChanged: (Boolean) -> Unit
 ) : View(context) {
     private var guidePoint = PointF(Float.NaN, Float.NaN)
     private var bankPoint = PointF(Float.NaN, Float.NaN)
     private var mode = GuideMode.NORMAL
     private var dragTarget = DragTarget.NONE
     private var showSecondBankLine = true
+    var isInputLocked: Boolean = false
+        private set
     private val tableRect = RectF()
     private val pockets = mutableListOf<PointF>()
 
@@ -171,6 +219,7 @@ private class ManualGuideView(
 
     private var normalButton = RectF()
     private var tableButton = RectF()
+    private var lockButton = RectF()
     private var secondLineButton = RectF()
     private var closeButton = RectF()
 
@@ -193,15 +242,20 @@ private class ManualGuideView(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        drawTableFrame(canvas)
+        if (!isInputLocked) {
+            drawTableFrame(canvas)
+        }
         when (mode) {
             GuideMode.NORMAL -> drawPocketGuide(canvas)
             GuideMode.TABLE -> drawBankGuide(canvas)
         }
-        drawButtons(canvas)
+        if (!isInputLocked) {
+            drawButtons(canvas)
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (isInputLocked) return false
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 if (closeButton.contains(event.x, event.y)) {
@@ -218,6 +272,10 @@ private class ManualGuideView(
                     mode = GuideMode.TABLE
                     dragTarget = DragTarget.NONE
                     invalidate()
+                    return true
+                }
+                if (lockButton.contains(event.x, event.y)) {
+                    onLockChanged(true)
                     return true
                 }
                 if (mode == GuideMode.TABLE && secondLineButton.contains(event.x, event.y)) {
@@ -248,6 +306,12 @@ private class ManualGuideView(
         }
 
         return true
+    }
+
+    fun setInputLocked(locked: Boolean) {
+        isInputLocked = locked
+        dragTarget = DragTarget.NONE
+        invalidate()
     }
 
     private fun chooseDragTarget(x: Float, y: Float): DragTarget {
@@ -313,7 +377,7 @@ private class ManualGuideView(
 
     private fun drawBankGuide(canvas: Canvas) {
         canvas.drawLine(guidePoint.x, guidePoint.y, bankPoint.x, bankPoint.y, guidePaint)
-        canvas.drawCircle(bankPoint.x, bankPoint.y, BALL_RADIUS, bankPointPaint)
+        canvas.drawCircle(bankPoint.x, bankPoint.y, if (isInputLocked) LOCKED_BALL_RADIUS else BALL_RADIUS, bankPointPaint)
 
         val wall = wallAt(bankPoint)
         if (wall != null) {
@@ -329,7 +393,7 @@ private class ManualGuideView(
                     firstHit.point.y,
                     reflectionPaint
                 )
-                canvas.drawCircle(firstHit.point.x, firstHit.point.y, BALL_RADIUS, bankPointPaint)
+                canvas.drawCircle(firstHit.point.x, firstHit.point.y, if (isInputLocked) LOCKED_BALL_RADIUS else BALL_RADIUS, bankPointPaint)
 
                 if (showSecondBankLine) {
                     val secondVector = reflectedVector(firstVector.x, firstVector.y, firstHit.wall)
@@ -342,7 +406,7 @@ private class ManualGuideView(
                             secondHit.point.y,
                             reflectionPaint
                         )
-                        canvas.drawCircle(secondHit.point.x, secondHit.point.y, BALL_RADIUS, bankPointPaint)
+                        canvas.drawCircle(secondHit.point.x, secondHit.point.y, if (isInputLocked) LOCKED_BALL_RADIUS else BALL_RADIUS, bankPointPaint)
                     }
                 }
             }
@@ -352,8 +416,9 @@ private class ManualGuideView(
     }
 
     private fun drawGuideHandle(canvas: Canvas) {
-        canvas.drawCircle(guidePoint.x, guidePoint.y, GUIDE_RADIUS, pointFillPaint)
-        canvas.drawCircle(guidePoint.x, guidePoint.y, GUIDE_RADIUS, pointPaint)
+        val radius = if (isInputLocked) LOCKED_GUIDE_RADIUS else GUIDE_RADIUS
+        canvas.drawCircle(guidePoint.x, guidePoint.y, radius, pointFillPaint)
+        canvas.drawCircle(guidePoint.x, guidePoint.y, radius, pointPaint)
         canvas.drawCircle(guidePoint.x, guidePoint.y, 10f, centerBorderPaint)
         canvas.drawCircle(guidePoint.x, guidePoint.y, 7f, centerPaint)
     }
@@ -368,6 +433,7 @@ private class ManualGuideView(
     private fun drawButtons(canvas: Canvas) {
         drawButton(canvas, normalButton, "NORMAL", mode == GuideMode.NORMAL)
         drawButton(canvas, tableButton, "TABELA", mode == GuideMode.TABLE)
+        drawButton(canvas, lockButton, "TRAVAR", active = false)
         if (mode == GuideMode.TABLE) {
             drawButton(canvas, secondLineButton, "2 LINHAS", showSecondBankLine)
         }
@@ -416,11 +482,13 @@ private class ManualGuideView(
         val buttonHeight = min(74f, max(54f, height * 0.08f))
         val bottom = height - max(18f, height * 0.025f)
         val top = bottom - buttonHeight
-        val closeWidth = min(250f, max(112f, width * 0.22f))
-        val modeWidth = max(98f, min(190f, (width - side * 2f - closeWidth - gap * 4f) / 2f))
+        val closeWidth = min(220f, max(112f, width * 0.18f))
+        val availableWidth = width - side * 2f - closeWidth - gap * 5f
+        val modeWidth = max(88f, min(170f, availableWidth / 3f))
 
         normalButton = RectF(side, top, side + modeWidth, bottom)
         tableButton = RectF(normalButton.right + gap, top, normalButton.right + gap + modeWidth, bottom)
+        lockButton = RectF(tableButton.right + gap, top, tableButton.right + gap + modeWidth, bottom)
         closeButton = RectF(width - side - closeWidth, top, width - side, bottom)
 
         val secondWidth = min(180f, max(118f, width * 0.16f))
@@ -520,9 +588,11 @@ private class ManualGuideView(
 
     companion object {
         private const val GUIDE_RADIUS = 92f
+        private const val LOCKED_GUIDE_RADIUS = 30f
         private const val GUIDE_TOUCH_RADIUS = 140f
         private const val BANK_TOUCH_RADIUS = 70f
         private const val BALL_RADIUS = 22f
+        private const val LOCKED_BALL_RADIUS = 12f
         private const val EDGE_SNAP_DISTANCE = 42f
         private const val WALL_EPSILON = 1.5f
         private const val RAY_EPSILON = 0.001f

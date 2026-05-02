@@ -34,10 +34,13 @@ O modo manual tem dois modos:
 - `NORMAL`: circulo ajustavel com linhas para as seis cacapas estimadas.
 - `TABELA`: dois pontos ajustaveis para simular uma jogada de tabela. Ao encostar o ponto branco na borda da mesa, o app calcula a primeira reflexao e pode mostrar uma segunda linha refletida.
 
+Toque em `TRAVAR` depois de posicionar a guia. Nesse estado a guia continua visivel, mas nao recebe toques; o jogo por baixo volta a receber o controle do taco. Para ajustar novamente, toque no botao flutuante de mira.
+
 ## Observacoes
 
 - Alguns apps podem bloquear captura de tela e retornar imagem preta.
 - Quando isso acontece, o overlay ainda pode aparecer, mas a IA nao recebe pixels reais da tela; o app mostra o estado `Captura bloqueada pelo app`.
+- Apos alguns frames protegidos seguidos, a captura e pausada para evitar consumo inutil de bateria/API.
 - A trajetoria depende de referencia visual: `aim_line`, `cue_direction`, `target_ball` ou `ghost_ball`.
 - Para producao, use `App Android -> Backend proprio -> API de IA` para nao expor chave no APK.
 - A fisica avancada ainda nao foi implementada. O MVP desenha linha reta ate a primeira colisao detectada ou limite da tela.

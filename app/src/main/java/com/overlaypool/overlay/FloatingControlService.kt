@@ -120,7 +120,12 @@ class FloatingControlService : Service(), DetectionStateStore.Listener {
     }
 
     private fun toggleManualGuide() {
-        runCatching { startService(Intent(this, ManualGuideService::class.java)) }
+        runCatching {
+            startService(
+                Intent(this, ManualGuideService::class.java)
+                    .setAction(AppActions.ACTION_TOGGLE_MANUAL_GUIDE)
+            )
+        }
     }
 
     private fun stopReading() {
