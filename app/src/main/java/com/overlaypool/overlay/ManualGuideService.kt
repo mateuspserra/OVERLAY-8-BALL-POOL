@@ -138,6 +138,7 @@ private class ManualGuideView(
 ) : View(context) {
     private val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private var guidePoint = PointF(Float.NaN, Float.NaN)
+    private var aimPoint = PointF(Float.NaN, Float.NaN)
     private var bankPoint = PointF(Float.NaN, Float.NaN)
     private var mode = GuideMode.NORMAL
     private var dragTarget = DragTarget.NONE
@@ -149,14 +150,14 @@ private class ManualGuideView(
 
     private val guidePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
-        strokeWidth = 5f
+        strokeWidth = 4.5f
         strokeCap = Paint.Cap.ROUND
         style = Paint.Style.STROKE
         setShadowLayer(4f, 0f, 0f, Color.BLACK)
     }
     private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(105, 255, 255, 255)
-        strokeWidth = 24f
+        color = Color.argb(95, 255, 255, 255)
+        strokeWidth = 9f
         strokeCap = Paint.Cap.ROUND
         style = Paint.Style.STROKE
     }
@@ -185,7 +186,7 @@ private class ManualGuideView(
     }
     private val pointPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.argb(220, 165, 30, 10)
-        strokeWidth = 8f
+        strokeWidth = 5f
         style = Paint.Style.STROKE
     }
     private val pointFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -203,6 +204,20 @@ private class ManualGuideView(
     private val bankPointPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         style = Paint.Style.FILL
+        setShadowLayer(4f, 0f, 0f, Color.BLACK)
+    }
+    private val aimPointPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 4f
+        setShadowLayer(4f, 0f, 0f, Color.BLACK)
+    }
+    private val backAimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(180, 255, 255, 255)
+        strokeWidth = 4f
+        strokeCap = Paint.Cap.ROUND
+        style = Paint.Style.STROKE
+        pathEffect = DashPathEffect(floatArrayOf(16f, 16f), 0f)
         setShadowLayer(4f, 0f, 0f, Color.BLACK)
     }
     private val buttonPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -239,7 +254,10 @@ private class ManualGuideView(
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         updateTable(width, height)
         if (guidePoint.x.isNaN() || guidePoint.y.isNaN()) {
-            guidePoint.set(tableRect.centerX(), tableRect.centerY())
+            guidePoint.set(tableRect.left + tableRect.width() * 0.28f, tableRect.centerY())
+        }
+        if (aimPoint.x.isNaN() || aimPoint.y.isNaN()) {
+            aimPoint.set(tableRect.left + tableRect.width() * 0.70f, tableRect.centerY())
         }
         if (bankPoint.x.isNaN() || bankPoint.y.isNaN()) {
             bankPoint.set(tableRect.right, tableRect.centerY())
@@ -253,7 +271,7 @@ private class ManualGuideView(
             drawTableFrame(canvas)
         }
         when (mode) {
-            GuideMode.NORMAL -> drawPocketGuide(canvas)
+            GuideMode.NORMAL -> drawAimGuide(canvas)
             GuideMode.TABLE -> drawBankGuide(canvas)
         }
         if (!isInputLocked) {
@@ -293,7 +311,7 @@ private class ManualGuideView(
 
                 dragTarget = chooseDragTarget(event.x, event.y)
                 if (dragTarget == DragTarget.NONE) {
-                    dragTarget = if (mode == GuideMode.TABLE) DragTarget.BANK else DragTarget.GUIDE
+                    dragTarget = if (mode == GuideMode.TABLE) DragTarget.BANK else DragTarget.AIM
                 }
                 updateDraggedPoint(event.x, event.y)
                 return true
@@ -328,12 +346,17 @@ private class ManualGuideView(
         cornerDragTarget(x, y)?.let { return it }
 
         val guideDistance = distance(x, y, guidePoint.x, guidePoint.y)
+        val aimDistance = distance(x, y, aimPoint.x, aimPoint.y)
         val bankDistance = distance(x, y, bankPoint.x, bankPoint.y)
         return when {
             mode == GuideMode.TABLE &&
                 bankDistance <= BANK_TOUCH_RADIUS &&
                 bankDistance <= guideDistance -> DragTarget.BANK
+            mode == GuideMode.NORMAL &&
+                aimDistance <= AIM_TOUCH_RADIUS &&
+                aimDistance <= guideDistance -> DragTarget.AIM
             guideDistance <= GUIDE_TOUCH_RADIUS -> DragTarget.GUIDE
+            mode == GuideMode.NORMAL && aimDistance <= AIM_TOUCH_RADIUS -> DragTarget.AIM
             mode == GuideMode.TABLE && bankDistance <= BANK_TOUCH_RADIUS -> DragTarget.BANK
             else -> DragTarget.NONE
         }
@@ -342,6 +365,10 @@ private class ManualGuideView(
     private fun updateDraggedPoint(x: Float, y: Float) {
         when (dragTarget) {
             DragTarget.GUIDE -> guidePoint.set(
+                x.coerceIn(tableRect.left, tableRect.right),
+                y.coerceIn(tableRect.top, tableRect.bottom)
+            )
+            DragTarget.AIM -> aimPoint.set(
                 x.coerceIn(tableRect.left, tableRect.right),
                 y.coerceIn(tableRect.top, tableRect.bottom)
             )
@@ -399,6 +426,10 @@ private class ManualGuideView(
             guidePoint.x.coerceIn(tableRect.left, tableRect.right),
             guidePoint.y.coerceIn(tableRect.top, tableRect.bottom)
         )
+        aimPoint.set(
+            aimPoint.x.coerceIn(tableRect.left, tableRect.right),
+            aimPoint.y.coerceIn(tableRect.top, tableRect.bottom)
+        )
         updateBankPoint(bankPoint.x, bankPoint.y)
     }
 
@@ -429,13 +460,29 @@ private class ManualGuideView(
         bankPoint.set(nextX, nextY)
     }
 
-    private fun drawPocketGuide(canvas: Canvas) {
-        pockets.forEach { pocket ->
-            val start = offsetToward(guidePoint, pocket, GUIDE_RADIUS * 0.72f)
-            canvas.drawLine(start.x, start.y, pocket.x, pocket.y, shadowPaint)
-            canvas.drawLine(start.x, start.y, pocket.x, pocket.y, guidePaint)
+    private fun drawAimGuide(canvas: Canvas) {
+        val dx = aimPoint.x - guidePoint.x
+        val dy = aimPoint.y - guidePoint.y
+        val forwardHit = intersectRay(guidePoint, dx, dy)
+        val backwardHit = intersectRay(guidePoint, -dx, -dy)
+
+        if (backwardHit != null) {
+            canvas.drawLine(
+                backwardHit.point.x,
+                backwardHit.point.y,
+                guidePoint.x,
+                guidePoint.y,
+                backAimPaint
+            )
         }
+
+        if (forwardHit != null) {
+            canvas.drawLine(guidePoint.x, guidePoint.y, forwardHit.point.x, forwardHit.point.y, shadowPaint)
+            canvas.drawLine(guidePoint.x, guidePoint.y, forwardHit.point.x, forwardHit.point.y, guidePaint)
+        }
+
         drawGuideHandle(canvas)
+        drawAimHandle(canvas)
     }
 
     private fun drawBankGuide(canvas: Canvas) {
@@ -486,6 +533,13 @@ private class ManualGuideView(
         canvas.drawCircle(guidePoint.x, guidePoint.y, 7f, centerPaint)
     }
 
+    private fun drawAimHandle(canvas: Canvas) {
+        val radius = if (isInputLocked) LOCKED_AIM_RADIUS else AIM_RADIUS
+        canvas.drawCircle(aimPoint.x, aimPoint.y, radius, aimPointPaint)
+        canvas.drawLine(aimPoint.x - radius, aimPoint.y, aimPoint.x + radius, aimPoint.y, aimPointPaint)
+        canvas.drawLine(aimPoint.x, aimPoint.y - radius, aimPoint.x, aimPoint.y + radius, aimPointPaint)
+    }
+
     private fun drawTableFrame(canvas: Canvas) {
         canvas.drawRoundRect(tableRect, 16f, 16f, railPaint)
         pockets.forEach { pocket ->
@@ -498,7 +552,7 @@ private class ManualGuideView(
     }
 
     private fun drawButtons(canvas: Canvas) {
-        drawButton(canvas, normalButton, "NORMAL", mode == GuideMode.NORMAL)
+        drawButton(canvas, normalButton, "MIRA", mode == GuideMode.NORMAL)
         drawButton(canvas, tableButton, "TABELA", mode == GuideMode.TABLE)
         drawButton(canvas, lockButton, "TRAVAR", active = false)
         if (mode == GuideMode.TABLE) {
@@ -599,13 +653,6 @@ private class ManualGuideView(
         )
     }
 
-    private fun offsetToward(from: PointF, to: PointF, offset: Float): PointF {
-        val dx = to.x - from.x
-        val dy = to.y - from.y
-        val length = hypot(dx, dy).coerceAtLeast(1f)
-        return PointF(from.x + dx / length * offset, from.y + dy / length * offset)
-    }
-
     private fun wallAt(point: PointF): Wall? {
         return when {
             abs(point.x - tableRect.left) <= WALL_EPSILON -> Wall.LEFT
@@ -670,6 +717,7 @@ private class ManualGuideView(
     private enum class DragTarget {
         NONE,
         GUIDE,
+        AIM,
         BANK,
         TABLE_TOP_LEFT,
         TABLE_TOP_RIGHT,
@@ -697,9 +745,12 @@ private class ManualGuideView(
     }
 
     companion object {
-        private const val GUIDE_RADIUS = 92f
-        private const val LOCKED_GUIDE_RADIUS = 30f
-        private const val GUIDE_TOUCH_RADIUS = 140f
+        private const val GUIDE_RADIUS = 42f
+        private const val LOCKED_GUIDE_RADIUS = 13f
+        private const val AIM_RADIUS = 28f
+        private const val LOCKED_AIM_RADIUS = 13f
+        private const val GUIDE_TOUCH_RADIUS = 90f
+        private const val AIM_TOUCH_RADIUS = 82f
         private const val BANK_TOUCH_RADIUS = 70f
         private const val BALL_RADIUS = 22f
         private const val LOCKED_BALL_RADIUS = 12f

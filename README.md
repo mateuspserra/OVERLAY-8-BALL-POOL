@@ -31,7 +31,7 @@ Quando o jogo bloquear captura de tela, use o botao de mira no controle flutuant
 
 O modo manual tem dois modos:
 
-- `NORMAL`: circulo ajustavel com linhas para as seis cacapas estimadas.
+- `MIRA`: dois pontos ajustaveis. Coloque o ponto vermelho no centro da bola branca e a mira branca no alvo/direcao; a linha fica no eixo do taco.
 - `TABELA`: dois pontos ajustaveis para simular uma jogada de tabela. Ao encostar o ponto branco na borda da mesa, o app calcula a primeira reflexao e pode mostrar uma segunda linha refletida.
 
 Toque em `TRAVAR` depois de posicionar a guia. Nesse estado a guia continua visivel, mas nao recebe toques; o jogo por baixo volta a receber o controle do taco. Para ajustar novamente, toque no botao flutuante de mira.
