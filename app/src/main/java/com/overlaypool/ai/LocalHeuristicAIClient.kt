@@ -30,12 +30,18 @@ private object PoolTableHeuristic {
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
 
         val feltBounds = findFeltBounds(pixels, width, height) ?: return emptyList()
-        val cueBall = findCueBall(pixels, width, feltBounds) ?: return emptyList()
-        val ballCandidates = findBallCandidates(pixels, width, feltBounds, cueBall)
-        val target = chooseTargetBall(cueBall, ballCandidates)
+        val strictCueBall = findCueBall(pixels, width, feltBounds)
+        val initialBallCandidates = findBallCandidates(pixels, width, feltBounds, strictCueBall)
+        val cueBall = strictCueBall ?: chooseCueBallFromCandidates(pixels, width, initialBallCandidates)
+        val ballCandidates = if (cueBall == null) {
+            initialBallCandidates
+        } else {
+            initialBallCandidates.filterNot { overlaps(it, cueBall) }
+        }
+        val target = cueBall?.let { chooseTargetBall(it, ballCandidates) }
 
         val detections = mutableListOf<DetectionResult>()
-        detections.add(cueBall)
+        cueBall?.let { detections.add(it) }
         detections.addAll(ballCandidates.take(MAX_BALL_DETECTIONS))
         if (target != null) {
             detections.add(
@@ -88,6 +94,7 @@ private object PoolTableHeuristic {
         bounds: Bounds
     ): DetectionResult? {
         findCueBallByCircleScan(pixels, width, bounds)?.let { return it }
+        findCueBallByLooseComponents(pixels, width, bounds)?.let { return it }
 
         val components = findComponents(
             bounds = bounds,
@@ -106,6 +113,30 @@ private object PoolTableHeuristic {
             .filter { it.fillRatio >= 0.22f }
             .maxByOrNull { it.area * it.fillRatio }
             ?.toDetection("cue_ball", 0.88f)
+    }
+
+    private fun findCueBallByLooseComponents(
+        pixels: IntArray,
+        width: Int,
+        bounds: Bounds
+    ): DetectionResult? {
+        val components = findComponents(
+            bounds = bounds,
+            stride = WHITE_COMPONENT_STRIDE,
+            include = { x, y ->
+                val color = pixels[y * width + x]
+                isCueLike(color) && !isFelt(color)
+            }
+        )
+
+        return components
+            .asSequence()
+            .filter { it.area >= 6 }
+            .filter { it.width in 6..72 && it.height in 6..72 }
+            .filter { it.aspectRatio <= 1.85f }
+            .filter { it.fillRatio >= 0.14f }
+            .maxByOrNull { it.area * it.fillRatio }
+            ?.toDetection("cue_ball", 0.76f)
     }
 
     private fun findCueBallByCircleScan(
@@ -190,16 +221,18 @@ private object PoolTableHeuristic {
         pixels: IntArray,
         width: Int,
         bounds: Bounds,
-        cueBall: DetectionResult
+        cueBall: DetectionResult?
     ): List<DetectionResult> {
-        val cueRadius = max(cueBall.width, cueBall.height) * 1.5f
+        val cueRadius = cueBall?.let { max(it.width, it.height) * 1.5f } ?: 0f
         val components = findComponents(
             bounds = bounds,
             stride = BALL_COMPONENT_STRIDE,
             include = { x, y ->
-                val dx = x - cueBall.centerX
-                val dy = y - cueBall.centerY
-                if (dx * dx + dy * dy < cueRadius * cueRadius) {
+                val nearCueBall = cueBall != null &&
+                    (x - cueBall.centerX).let { dx ->
+                        (y - cueBall.centerY).let { dy -> dx * dx + dy * dy }
+                    } < cueRadius * cueRadius
+                if (nearCueBall) {
                     false
                 } else {
                     val color = pixels[y * width + x]
@@ -217,6 +250,53 @@ private object PoolTableHeuristic {
             .sortedWith(compareByDescending<Component> { it.area }.thenBy { it.centerX })
             .map { it.toDetection("target_ball", 0.70f) }
             .toList()
+    }
+
+    private fun chooseCueBallFromCandidates(
+        pixels: IntArray,
+        width: Int,
+        candidates: List<DetectionResult>
+    ): DetectionResult? {
+        return candidates
+            .asSequence()
+            .map { candidate -> candidate to whitenessScore(pixels, width, candidate) }
+            .filter { (_, score) -> score >= MIN_CUE_CANDIDATE_WHITENESS }
+            .maxByOrNull { (_, score) -> score }
+            ?.first
+            ?.copy(className = "cue_ball", confidence = 0.68f)
+    }
+
+    private fun whitenessScore(
+        pixels: IntArray,
+        width: Int,
+        detection: DetectionResult
+    ): Float {
+        val left = detection.x.toInt().coerceAtLeast(0)
+        val top = detection.y.toInt().coerceAtLeast(0)
+        val right = (detection.x + detection.width).toInt().coerceAtMost(width - 1)
+        val bottom = (detection.y + detection.height).toInt()
+        var sampled = 0
+        var cueLike = 0
+
+        var y = top
+        while (y <= bottom && y * width < pixels.size) {
+            var x = left
+            while (x <= right) {
+                sampled++
+                if (isCueLike(pixels[y * width + x])) cueLike++
+                x += 2
+            }
+            y += 2
+        }
+
+        return if (sampled == 0) 0f else cueLike.toFloat() / sampled.toFloat()
+    }
+
+    private fun overlaps(first: DetectionResult, second: DetectionResult): Boolean {
+        val dx = first.centerX - second.centerX
+        val dy = first.centerY - second.centerY
+        val minDistance = max(first.radius, second.radius) * 0.85f
+        return dx * dx + dy * dy <= minDistance * minDistance
     }
 
     private fun chooseTargetBall(
@@ -332,6 +412,19 @@ private object PoolTableHeuristic {
         return luma >= 168 && chroma <= 58
     }
 
+    private fun isCueLike(color: Int): Boolean {
+        val red = color.red
+        val green = color.green
+        val blue = color.blue
+        val luma = color.luma
+        val chroma = maxOf(abs(red - green), abs(red - blue), abs(green - blue))
+        val minChannel = minOf(red, green, blue)
+        return color.alpha > 32 &&
+            luma >= 132 &&
+            minChannel >= 92 &&
+            chroma <= 118
+    }
+
     private fun isBallColor(color: Int): Boolean {
         val red = color.red
         val green = color.green
@@ -399,7 +492,8 @@ private object PoolTableHeuristic {
     private const val CUE_BALL_MAX_RADIUS = 22
     private const val CUE_BALL_INNER_RADIUS_FACTOR = 0.62f
     private const val CUE_BALL_INNER_AREA_RATIO = 0.38f
-    private const val CUE_BALL_MIN_WHITE_RATIO = 0.30f
-    private const val CUE_BALL_MIN_INNER_WHITE_RATIO = 0.36f
-    private const val CUE_BALL_MAX_FELT_RATIO = 0.66f
+    private const val CUE_BALL_MIN_WHITE_RATIO = 0.18f
+    private const val CUE_BALL_MIN_INNER_WHITE_RATIO = 0.22f
+    private const val CUE_BALL_MAX_FELT_RATIO = 0.78f
+    private const val MIN_CUE_CANDIDATE_WHITENESS = 0.16f
 }
