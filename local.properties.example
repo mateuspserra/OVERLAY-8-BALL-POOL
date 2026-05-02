@@ -15,3 +15,11 @@
 # MIN_DETECTION_CONFIDENCE=0.55
 # CAPTURE_INTERVAL_MS=250
 # MAX_UPLOAD_IMAGE_SIZE=960
+
+# Assinatura de release para producao.
+# Mantenha o arquivo de keystore fora do git.
+# Se nao configurar estes valores, o release sera assinado com a debug key para builds de MVP/teste.
+# RELEASE_STORE_FILE=release.keystore
+# RELEASE_STORE_PASSWORD=<senha-do-keystore>
+# RELEASE_KEY_ALIAS=<alias-da-chave>
+# RELEASE_KEY_PASSWORD=<senha-da-chave>

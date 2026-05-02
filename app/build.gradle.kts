@@ -29,6 +29,18 @@ fun longConfig(name: String, defaultValue: String): String {
     return readConfig(name).toLongOrNull()?.toString() ?: defaultValue
 }
 
+val releaseStoreFilePath = readConfig("RELEASE_STORE_FILE").trim()
+val releaseStorePassword = readConfig("RELEASE_STORE_PASSWORD").trim()
+val releaseKeyAlias = readConfig("RELEASE_KEY_ALIAS").trim()
+val releaseKeyPassword = readConfig("RELEASE_KEY_PASSWORD").trim()
+val releaseStoreFile = releaseStoreFilePath
+    .takeIf { it.isNotEmpty() }
+    ?.let { rootProject.file(it) }
+val hasReleaseSigning = releaseStoreFile?.exists() == true &&
+    releaseStorePassword.isNotEmpty() &&
+    releaseKeyAlias.isNotEmpty() &&
+    releaseKeyPassword.isNotEmpty()
+
 android {
     namespace = "com.overlaypool"
     compileSdk = 35
@@ -57,6 +69,27 @@ android {
                 keyAlias = "androiddebugkey"
                 keyPassword = "android"
             }
+        }
+
+        create("release") {
+            if (hasReleaseSigning && releaseStoreFile != null) {
+                storeFile = releaseStoreFile
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 

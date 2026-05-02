@@ -8,4 +8,6 @@ captures/
 *.iml
 *.apk
 *.aab
+*.jks
+*.keystore
 *.v3-v1.yolov8
