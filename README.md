@@ -36,6 +36,8 @@ O modo manual tem dois modos:
 
 Toque em `TRAVAR` depois de posicionar a guia. Nesse estado a guia continua visivel, mas nao recebe toques; o jogo por baixo volta a receber o controle do taco. Para ajustar novamente, toque no botao flutuante de mira.
 
+Se a area da mesa nao bater com as cacapas, destrave a guia e arraste os quatro circulos vermelhos dos cantos ate os cantos reais das cacapas. A calibracao fica salva no aparelho.
+
 ## Observacoes
 
 - Alguns apps podem bloquear captura de tela e retornar imagem preta.

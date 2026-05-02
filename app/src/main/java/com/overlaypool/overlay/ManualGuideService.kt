@@ -1,6 +1,7 @@
 package com.overlaypool.overlay
 
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
@@ -135,6 +136,7 @@ private class ManualGuideView(
     private val onClose: () -> Unit,
     private val onLockChanged: (Boolean) -> Unit
 ) : View(context) {
+    private val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private var guidePoint = PointF(Float.NaN, Float.NaN)
     private var bankPoint = PointF(Float.NaN, Float.NaN)
     private var mode = GuideMode.NORMAL
@@ -175,6 +177,11 @@ private class ManualGuideView(
         color = Color.argb(150, 255, 255, 255)
         style = Paint.Style.STROKE
         strokeWidth = 3f
+    }
+    private val cornerHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(210, 255, 0, 0)
+        style = Paint.Style.STROKE
+        strokeWidth = 4f
     }
     private val pointPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.argb(220, 165, 30, 10)
@@ -300,6 +307,9 @@ private class ManualGuideView(
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (dragTarget.isTableCorner()) {
+                    saveTableCalibration()
+                }
                 dragTarget = DragTarget.NONE
                 return true
             }
@@ -315,6 +325,8 @@ private class ManualGuideView(
     }
 
     private fun chooseDragTarget(x: Float, y: Float): DragTarget {
+        cornerDragTarget(x, y)?.let { return it }
+
         val guideDistance = distance(x, y, guidePoint.x, guidePoint.y)
         val bankDistance = distance(x, y, bankPoint.x, bankPoint.y)
         return when {
@@ -334,9 +346,60 @@ private class ManualGuideView(
                 y.coerceIn(tableRect.top, tableRect.bottom)
             )
             DragTarget.BANK -> updateBankPoint(x, y)
+            DragTarget.TABLE_TOP_LEFT,
+            DragTarget.TABLE_TOP_RIGHT,
+            DragTarget.TABLE_BOTTOM_LEFT,
+            DragTarget.TABLE_BOTTOM_RIGHT -> updateTableCorner(dragTarget, x, y)
             DragTarget.NONE -> Unit
         }
         invalidate()
+    }
+
+    private fun cornerDragTarget(x: Float, y: Float): DragTarget? {
+        val corners = listOf(
+            DragTarget.TABLE_TOP_LEFT to PointF(tableRect.left, tableRect.top),
+            DragTarget.TABLE_TOP_RIGHT to PointF(tableRect.right, tableRect.top),
+            DragTarget.TABLE_BOTTOM_LEFT to PointF(tableRect.left, tableRect.bottom),
+            DragTarget.TABLE_BOTTOM_RIGHT to PointF(tableRect.right, tableRect.bottom)
+        )
+        return corners
+            .filter { (_, point) -> distance(x, y, point.x, point.y) <= TABLE_CORNER_TOUCH_RADIUS }
+            .minByOrNull { (_, point) -> distance(x, y, point.x, point.y) }
+            ?.first
+    }
+
+    private fun updateTableCorner(target: DragTarget, x: Float, y: Float) {
+        val minWidth = max(width * 0.35f, 320f)
+        val minHeight = max(height * 0.30f, 220f)
+        val nextX = x.coerceIn(0f, width.toFloat())
+        val nextY = y.coerceIn(0f, height.toFloat())
+
+        when (target) {
+            DragTarget.TABLE_TOP_LEFT -> {
+                tableRect.left = nextX.coerceAtMost(tableRect.right - minWidth)
+                tableRect.top = nextY.coerceAtMost(tableRect.bottom - minHeight)
+            }
+            DragTarget.TABLE_TOP_RIGHT -> {
+                tableRect.right = nextX.coerceAtLeast(tableRect.left + minWidth)
+                tableRect.top = nextY.coerceAtMost(tableRect.bottom - minHeight)
+            }
+            DragTarget.TABLE_BOTTOM_LEFT -> {
+                tableRect.left = nextX.coerceAtMost(tableRect.right - minWidth)
+                tableRect.bottom = nextY.coerceAtLeast(tableRect.top + minHeight)
+            }
+            DragTarget.TABLE_BOTTOM_RIGHT -> {
+                tableRect.right = nextX.coerceAtLeast(tableRect.left + minWidth)
+                tableRect.bottom = nextY.coerceAtLeast(tableRect.top + minHeight)
+            }
+            else -> Unit
+        }
+
+        updatePocketsFromTable()
+        guidePoint.set(
+            guidePoint.x.coerceIn(tableRect.left, tableRect.right),
+            guidePoint.y.coerceIn(tableRect.top, tableRect.bottom)
+        )
+        updateBankPoint(bankPoint.x, bankPoint.y)
     }
 
     private fun updateBankPoint(x: Float, y: Float) {
@@ -428,6 +491,10 @@ private class ManualGuideView(
         pockets.forEach { pocket ->
             canvas.drawCircle(pocket.x, pocket.y, 12f, pocketPaint)
         }
+        canvas.drawCircle(tableRect.left, tableRect.top, TABLE_CORNER_HANDLE_RADIUS, cornerHandlePaint)
+        canvas.drawCircle(tableRect.right, tableRect.top, TABLE_CORNER_HANDLE_RADIUS, cornerHandlePaint)
+        canvas.drawCircle(tableRect.left, tableRect.bottom, TABLE_CORNER_HANDLE_RADIUS, cornerHandlePaint)
+        canvas.drawCircle(tableRect.right, tableRect.bottom, TABLE_CORNER_HANDLE_RADIUS, cornerHandlePaint)
     }
 
     private fun drawButtons(canvas: Canvas) {
@@ -459,13 +526,19 @@ private class ManualGuideView(
 
     private fun updateTable(width: Int, height: Int) {
         if (width <= 0 || height <= 0) return
-        val landscape = width > height
-        val left = if (landscape) width * 0.12f else width * 0.08f
-        val right = if (landscape) width * 0.88f else width * 0.92f
-        val top = if (landscape) height * 0.14f else height * 0.24f
-        val bottom = if (landscape) height * 0.84f else height * 0.78f
+        val leftRatio = preferences.getFloat(PREF_TABLE_LEFT, defaultLeftRatio(width, height))
+        val rightRatio = preferences.getFloat(PREF_TABLE_RIGHT, defaultRightRatio(width, height))
+        val topRatio = preferences.getFloat(PREF_TABLE_TOP, defaultTopRatio(width, height))
+        val bottomRatio = preferences.getFloat(PREF_TABLE_BOTTOM, defaultBottomRatio(width, height))
+        val left = width * leftRatio
+        val right = width * rightRatio
+        val top = height * topRatio
+        val bottom = height * bottomRatio
         tableRect.set(left, top, right, bottom)
+        updatePocketsFromTable()
+    }
 
+    private fun updatePocketsFromTable() {
         val centerX = tableRect.centerX()
         pockets.clear()
         pockets.add(PointF(tableRect.left, tableRect.top))
@@ -474,6 +547,32 @@ private class ManualGuideView(
         pockets.add(PointF(tableRect.left, tableRect.bottom))
         pockets.add(PointF(centerX, tableRect.bottom))
         pockets.add(PointF(tableRect.right, tableRect.bottom))
+    }
+
+    private fun saveTableCalibration() {
+        if (width <= 0 || height <= 0) return
+        preferences.edit()
+            .putFloat(PREF_TABLE_LEFT, tableRect.left / width.toFloat())
+            .putFloat(PREF_TABLE_RIGHT, tableRect.right / width.toFloat())
+            .putFloat(PREF_TABLE_TOP, tableRect.top / height.toFloat())
+            .putFloat(PREF_TABLE_BOTTOM, tableRect.bottom / height.toFloat())
+            .apply()
+    }
+
+    private fun defaultLeftRatio(width: Int, height: Int): Float {
+        return if (width > height) 0.175f else 0.08f
+    }
+
+    private fun defaultRightRatio(width: Int, height: Int): Float {
+        return if (width > height) 0.89f else 0.92f
+    }
+
+    private fun defaultTopRatio(width: Int, height: Int): Float {
+        return if (width > height) 0.205f else 0.24f
+    }
+
+    private fun defaultBottomRatio(width: Int, height: Int): Float {
+        return if (width > height) 0.935f else 0.78f
     }
 
     private fun updateButtons(width: Int, height: Int) {
@@ -571,7 +670,18 @@ private class ManualGuideView(
     private enum class DragTarget {
         NONE,
         GUIDE,
-        BANK
+        BANK,
+        TABLE_TOP_LEFT,
+        TABLE_TOP_RIGHT,
+        TABLE_BOTTOM_LEFT,
+        TABLE_BOTTOM_RIGHT
+    }
+
+    private fun DragTarget.isTableCorner(): Boolean {
+        return this == DragTarget.TABLE_TOP_LEFT ||
+            this == DragTarget.TABLE_TOP_RIGHT ||
+            this == DragTarget.TABLE_BOTTOM_LEFT ||
+            this == DragTarget.TABLE_BOTTOM_RIGHT
     }
 
     private enum class GuideMode {
@@ -593,8 +703,15 @@ private class ManualGuideView(
         private const val BANK_TOUCH_RADIUS = 70f
         private const val BALL_RADIUS = 22f
         private const val LOCKED_BALL_RADIUS = 12f
+        private const val TABLE_CORNER_HANDLE_RADIUS = 24f
+        private const val TABLE_CORNER_TOUCH_RADIUS = 58f
         private const val EDGE_SNAP_DISTANCE = 42f
         private const val WALL_EPSILON = 1.5f
         private const val RAY_EPSILON = 0.001f
+        private const val PREFS_NAME = "manual_guide"
+        private const val PREF_TABLE_LEFT = "table_left_ratio"
+        private const val PREF_TABLE_RIGHT = "table_right_ratio"
+        private const val PREF_TABLE_TOP = "table_top_ratio"
+        private const val PREF_TABLE_BOTTOM = "table_bottom_ratio"
     }
 }
