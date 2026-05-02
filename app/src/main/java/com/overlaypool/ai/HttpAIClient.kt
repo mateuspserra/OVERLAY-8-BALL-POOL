@@ -6,6 +6,7 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import kotlin.system.measureTimeMillis
 
 class HttpAIClient(
@@ -20,22 +21,32 @@ class HttpAIClient(
 
         val latencyMs = measureTimeMillis {
             try {
-                val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                val roboflowModelProvider = provider.equals("roboflow_model", ignoreCase = true) ||
+                    provider.equals("roboflow_detect", ignoreCase = true)
+                val requestUrl = if (roboflowModelProvider) buildRoboflowModelUrl() else endpoint
+                val connection = (URL(requestUrl).openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
                     connectTimeout = 10_000
                     readTimeout = 15_000
                     doOutput = true
-                    setRequestProperty("Content-Type", "application/json")
+                    setRequestProperty(
+                        "Content-Type",
+                        if (roboflowModelProvider) "application/x-www-form-urlencoded" else "application/json"
+                    )
                     setRequestProperty("Accept", "application/json")
-                    if (apiKey.isNotEmpty()) {
+                    if (apiKey.isNotEmpty() && !roboflowModelProvider) {
                         setRequestProperty("Authorization", "Bearer $apiKey")
                         setRequestProperty("X-Api-Key", apiKey)
                     }
                 }
 
-                val body = buildRequestBody(encodedImage, bitmap.width, bitmap.height)
+                val body = if (roboflowModelProvider) {
+                    encodedImage
+                } else {
+                    buildRequestBody(encodedImage, bitmap.width, bitmap.height).toString()
+                }
                 connection.outputStream.use { output ->
-                    output.write(body.toString().toByteArray(Charsets.UTF_8))
+                    output.write(body.toByteArray(Charsets.UTF_8))
                 }
 
                 val responseCode = connection.responseCode
@@ -87,6 +98,17 @@ class HttpAIClient(
                 .put("imageHeight", height)
                 .put("apiKey", apiKey)
         }
+    }
+
+    private fun buildRoboflowModelUrl(): String {
+        val separator = if (endpoint.contains("?")) "&" else "?"
+        return endpoint +
+            separator +
+            "api_key=${urlEncode(apiKey)}&confidence=25&overlap=30&format=json"
+    }
+
+    private fun urlEncode(value: String): String {
+        return URLEncoder.encode(value, Charsets.UTF_8.name())
     }
 
     private fun encodeJpeg(bitmap: Bitmap): String {

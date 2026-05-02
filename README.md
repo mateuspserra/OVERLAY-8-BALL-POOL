@@ -51,4 +51,5 @@ Se a area da mesa nao bater com as cacapas, destrave a guia e arraste os quatro 
 - A trajetoria depende de referencia visual: `aim_line`, `cue_direction`, `target_ball` ou `ghost_ball`.
 - Para producao, use `App Android -> Backend proprio -> API de IA` para nao expor chave no APK.
 - A fisica avancada ainda nao foi implementada. O MVP desenha linha reta ate a primeira colisao detectada ou limite da tela.
+- Para conectar o YOLOv8/YOLO26 ao app via Roboflow Hosted API ou backend local, veja `docs/YOLO_BACKEND.md`.
 - Para comparar YOLOv8 e YOLO26 no dataset atual, veja `docs/YOLO_MODEL_TESTS.md`.

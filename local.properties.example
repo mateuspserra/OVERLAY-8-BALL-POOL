@@ -8,6 +8,16 @@
 # AI_PROVIDER=generic_json
 # AI_ENDPOINT=https://seu-backend.example.com/detect
 # AI_API_KEY=
+#
+# Para Roboflow Hosted API de modelo:
+# AI_PROVIDER=roboflow_model
+# AI_ENDPOINT=https://detect.roboflow.com/8-ball-pool-vision/1
+# AI_API_KEY=<sua-chave-roboflow>
+#
+# Para o backend YOLO local em outro PC na mesma rede:
+# AI_PROVIDER=generic_json
+# AI_ENDPOINT=http://192.168.0.10:8765/detect
+# AI_API_KEY=
 
 # Roboflow Workflow direto para testes:
 # AI_PROVIDER=roboflow_workflow

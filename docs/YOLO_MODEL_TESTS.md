@@ -26,6 +26,23 @@ val: 170 images, 170 labels
 test: 121 images, 121 labels
 ```
 
+Para validar o export YOLO26 baixado do Roboflow:
+
+```powershell
+python tools\yolo_model_ab_test.py --dataset-zip "8 ball pool vision.v1i.yolo26.zip" --work-dir build\yolo26_dataset_check --prepare-only
+```
+
+Resultado observado:
+
+```text
+Classes (1): ['balls']
+train: 164 images, 164 labels
+val: 47 images, 47 labels
+test: 23 images, 23 labels
+```
+
+Esse export detecta bolas em geral, mas nao separa bola branca, bola alvo e ghost ball.
+
 ## Teste principal
 
 Treina os dois modelos com os mesmos parametros e avalia no split `test`:
