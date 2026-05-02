@@ -143,10 +143,21 @@ private class ManualGuideView(
     private var mode = GuideMode.NORMAL
     private var dragTarget = DragTarget.NONE
     private var showSecondBankLine = true
+    private var selectedPlanPathIndex = 0
+    private var selectedPlanPointIndex = -1
     var isInputLocked: Boolean = false
         private set
     private val tableRect = RectF()
     private val pockets = mutableListOf<PointF>()
+    private val planPaths = mutableListOf<PlanPath>()
+    private val planColors = intArrayOf(
+        Color.WHITE,
+        Color.rgb(234, 222, 62),
+        Color.rgb(70, 220, 86),
+        Color.rgb(218, 48, 48),
+        Color.rgb(48, 95, 225),
+        Color.rgb(188, 78, 220)
+    )
 
     private val guidePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
@@ -220,6 +231,27 @@ private class ManualGuideView(
         pathEffect = DashPathEffect(floatArrayOf(16f, 16f), 0f)
         setShadowLayer(4f, 0f, 0f, Color.BLACK)
     }
+    private val planLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        strokeWidth = 4f
+        strokeCap = Paint.Cap.ROUND
+        style = Paint.Style.STROKE
+        setShadowLayer(4f, 0f, 0f, Color.BLACK)
+    }
+    private val planShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(95, 255, 255, 255)
+        strokeWidth = 8f
+        strokeCap = Paint.Cap.ROUND
+        style = Paint.Style.STROKE
+    }
+    private val planPointPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        setShadowLayer(4f, 0f, 0f, Color.BLACK)
+    }
+    private val planPointBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+    }
     private val buttonPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(230, 82, 20)
         style = Paint.Style.FILL
@@ -241,6 +273,7 @@ private class ManualGuideView(
 
     private var normalButton = RectF()
     private var tableButton = RectF()
+    private var planButton = RectF()
     private var lockButton = RectF()
     private var secondLineButton = RectF()
     private var closeButton = RectF()
@@ -262,6 +295,7 @@ private class ManualGuideView(
         if (bankPoint.x.isNaN() || bankPoint.y.isNaN()) {
             bankPoint.set(tableRect.right, tableRect.centerY())
         }
+        ensurePlanPaths()
         updateButtons(width, height)
     }
 
@@ -273,6 +307,7 @@ private class ManualGuideView(
         when (mode) {
             GuideMode.NORMAL -> drawAimGuide(canvas)
             GuideMode.TABLE -> drawBankGuide(canvas)
+            GuideMode.PLAN -> drawPlanGuide(canvas)
         }
         if (!isInputLocked) {
             drawButtons(canvas)
@@ -299,6 +334,12 @@ private class ManualGuideView(
                     invalidate()
                     return true
                 }
+                if (planButton.contains(event.x, event.y)) {
+                    mode = GuideMode.PLAN
+                    dragTarget = DragTarget.NONE
+                    invalidate()
+                    return true
+                }
                 if (lockButton.contains(event.x, event.y)) {
                     onLockChanged(true)
                     return true
@@ -308,10 +349,22 @@ private class ManualGuideView(
                     invalidate()
                     return true
                 }
+                if (mode == GuideMode.PLAN && secondLineButton.contains(event.x, event.y)) {
+                    cyclePlanPath()
+                    invalidate()
+                    return true
+                }
 
                 dragTarget = chooseDragTarget(event.x, event.y)
                 if (dragTarget == DragTarget.NONE) {
-                    dragTarget = if (mode == GuideMode.TABLE) DragTarget.BANK else DragTarget.AIM
+                    dragTarget = when (mode) {
+                        GuideMode.TABLE -> DragTarget.BANK
+                        GuideMode.PLAN -> {
+                            selectNearestPlanPoint(event.x, event.y)
+                            DragTarget.PLAN_POINT
+                        }
+                        GuideMode.NORMAL -> DragTarget.AIM
+                    }
                 }
                 updateDraggedPoint(event.x, event.y)
                 return true
@@ -327,6 +380,10 @@ private class ManualGuideView(
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (dragTarget.isTableCorner()) {
                     saveTableCalibration()
+                    savePlanPaths()
+                }
+                if (dragTarget == DragTarget.PLAN_POINT) {
+                    savePlanPaths()
                 }
                 dragTarget = DragTarget.NONE
                 return true
@@ -344,6 +401,9 @@ private class ManualGuideView(
 
     private fun chooseDragTarget(x: Float, y: Float): DragTarget {
         cornerDragTarget(x, y)?.let { return it }
+        if (mode == GuideMode.PLAN) {
+            planPointDragTarget(x, y)?.let { return it }
+        }
 
         val guideDistance = distance(x, y, guidePoint.x, guidePoint.y)
         val aimDistance = distance(x, y, aimPoint.x, aimPoint.y)
@@ -373,6 +433,7 @@ private class ManualGuideView(
                 y.coerceIn(tableRect.top, tableRect.bottom)
             )
             DragTarget.BANK -> updateBankPoint(x, y)
+            DragTarget.PLAN_POINT -> updatePlanPoint(x, y)
             DragTarget.TABLE_TOP_LEFT,
             DragTarget.TABLE_TOP_RIGHT,
             DragTarget.TABLE_BOTTOM_LEFT,
@@ -380,6 +441,55 @@ private class ManualGuideView(
             DragTarget.NONE -> Unit
         }
         invalidate()
+    }
+
+    private fun planPointDragTarget(x: Float, y: Float): DragTarget? {
+        ensurePlanPaths()
+        var bestPathIndex = -1
+        var bestPointIndex = -1
+        var bestDistance = PLAN_POINT_TOUCH_RADIUS
+
+        planPaths.forEachIndexed { pathIndex, path ->
+            path.points.forEachIndexed { pointIndex, point ->
+                val pointDistance = distance(x, y, point.x, point.y)
+                if (pointDistance <= bestDistance) {
+                    bestDistance = pointDistance
+                    bestPathIndex = pathIndex
+                    bestPointIndex = pointIndex
+                }
+            }
+        }
+
+        if (bestPathIndex < 0 || bestPointIndex < 0) return null
+        selectedPlanPathIndex = bestPathIndex
+        selectedPlanPointIndex = bestPointIndex
+        return DragTarget.PLAN_POINT
+    }
+
+    private fun selectNearestPlanPoint(x: Float, y: Float) {
+        ensurePlanPaths()
+        val path = planPaths.getOrNull(selectedPlanPathIndex) ?: return
+        selectedPlanPointIndex = path.points
+            .mapIndexed { index, point -> index to distance(x, y, point.x, point.y) }
+            .minByOrNull { it.second }
+            ?.first ?: 0
+    }
+
+    private fun updatePlanPoint(x: Float, y: Float) {
+        ensurePlanPaths()
+        val path = planPaths.getOrNull(selectedPlanPathIndex) ?: return
+        val point = path.points.getOrNull(selectedPlanPointIndex) ?: return
+        point.set(
+            x.coerceIn(tableRect.left, tableRect.right),
+            y.coerceIn(tableRect.top, tableRect.bottom)
+        )
+    }
+
+    private fun cyclePlanPath() {
+        ensurePlanPaths()
+        if (planPaths.isEmpty()) return
+        selectedPlanPathIndex = (selectedPlanPathIndex + 1) % planPaths.size
+        selectedPlanPointIndex = -1
     }
 
     private fun cornerDragTarget(x: Float, y: Float): DragTarget? {
@@ -430,6 +540,14 @@ private class ManualGuideView(
             aimPoint.x.coerceIn(tableRect.left, tableRect.right),
             aimPoint.y.coerceIn(tableRect.top, tableRect.bottom)
         )
+        planPaths.forEach { path ->
+            path.points.forEach { point ->
+                point.set(
+                    point.x.coerceIn(tableRect.left, tableRect.right),
+                    point.y.coerceIn(tableRect.top, tableRect.bottom)
+                )
+            }
+        }
         updateBankPoint(bankPoint.x, bankPoint.y)
     }
 
@@ -525,6 +643,40 @@ private class ManualGuideView(
         drawGuideHandle(canvas)
     }
 
+    private fun drawPlanGuide(canvas: Canvas) {
+        ensurePlanPaths()
+        planPaths.forEachIndexed { index, path ->
+            val active = index == selectedPlanPathIndex
+            val alpha = when {
+                isInputLocked -> 230
+                active -> 245
+                else -> 145
+            }
+
+            planShadowPaint.alpha = if (active || isInputLocked) 95 else 55
+            planLinePaint.color = path.color
+            planLinePaint.alpha = alpha
+            planLinePaint.strokeWidth = if (active || isInputLocked) 4.8f else 3.4f
+
+            path.points.zipWithNext().forEach { (start, end) ->
+                canvas.drawLine(start.x, start.y, end.x, end.y, planShadowPaint)
+                canvas.drawLine(start.x, start.y, end.x, end.y, planLinePaint)
+            }
+
+            if (!isInputLocked || active) {
+                val radius = if (isInputLocked) PLAN_LOCKED_POINT_RADIUS else PLAN_POINT_RADIUS
+                path.points.forEachIndexed { pointIndex, point ->
+                    planPointPaint.color = path.color
+                    planPointPaint.alpha = if (active) 245 else 170
+                    canvas.drawCircle(point.x, point.y, radius, planPointPaint)
+                    if (!isInputLocked && active && pointIndex == selectedPlanPointIndex) {
+                        canvas.drawCircle(point.x, point.y, radius + 7f, planPointBorderPaint)
+                    }
+                }
+            }
+        }
+    }
+
     private fun drawGuideHandle(canvas: Canvas) {
         val radius = if (isInputLocked) LOCKED_GUIDE_RADIUS else GUIDE_RADIUS
         canvas.drawCircle(guidePoint.x, guidePoint.y, radius, pointFillPaint)
@@ -554,9 +706,13 @@ private class ManualGuideView(
     private fun drawButtons(canvas: Canvas) {
         drawButton(canvas, normalButton, "MIRA", mode == GuideMode.NORMAL)
         drawButton(canvas, tableButton, "TABELA", mode == GuideMode.TABLE)
+        drawButton(canvas, planButton, "PLANO", mode == GuideMode.PLAN)
         drawButton(canvas, lockButton, "TRAVAR", active = false)
         if (mode == GuideMode.TABLE) {
             drawButton(canvas, secondLineButton, "2 LINHAS", showSecondBankLine)
+        }
+        if (mode == GuideMode.PLAN) {
+            drawButton(canvas, secondLineButton, "LINHA ${selectedPlanPathIndex + 1}", active = true)
         }
         canvas.drawRoundRect(closeButton, 8f, 8f, closeButtonPaint)
         drawCenteredText(canvas, "FECHAR", closeButton)
@@ -613,6 +769,83 @@ private class ManualGuideView(
             .apply()
     }
 
+    private fun ensurePlanPaths() {
+        if (planPaths.isNotEmpty()) return
+        val savedPaths = preferences.getString(PREF_PLAN_PATHS, null)
+        if (!savedPaths.isNullOrBlank() && restorePlanPaths(savedPaths)) return
+        createDefaultPlanPaths()
+    }
+
+    private fun createDefaultPlanPaths() {
+        fun tablePoint(xRatio: Float, yRatio: Float): PointF {
+            return PointF(
+                tableRect.left + tableRect.width() * xRatio,
+                tableRect.top + tableRect.height() * yRatio
+            )
+        }
+
+        planPaths.clear()
+        planPaths += PlanPath(
+            color = planColors[0],
+            points = mutableListOf(tablePoint(0.28f, 0.50f), tablePoint(0.70f, 0.50f), tablePoint(0.96f, 0.50f))
+        )
+        planPaths += PlanPath(
+            color = planColors[1],
+            points = mutableListOf(tablePoint(0.28f, 0.50f), tablePoint(0.12f, 0.18f), tablePoint(0.88f, 0.18f))
+        )
+        planPaths += PlanPath(
+            color = planColors[2],
+            points = mutableListOf(tablePoint(0.28f, 0.50f), tablePoint(0.18f, 0.82f), tablePoint(0.86f, 0.76f), tablePoint(0.96f, 0.16f))
+        )
+        planPaths += PlanPath(
+            color = planColors[3],
+            points = mutableListOf(tablePoint(0.28f, 0.50f), tablePoint(0.50f, 0.26f), tablePoint(0.92f, 0.60f))
+        )
+        selectedPlanPathIndex = selectedPlanPathIndex.coerceIn(0, planPaths.lastIndex)
+    }
+
+    private fun restorePlanPaths(encoded: String): Boolean {
+        if (width <= 0 || height <= 0) return false
+        val restored = encoded.split("|")
+            .mapIndexedNotNull { pathIndex, pathText ->
+                val points = pathText.split(";")
+                    .mapNotNull { pointText ->
+                        val parts = pointText.split(",")
+                        val xRatio = parts.getOrNull(0)?.toFloatOrNull()
+                        val yRatio = parts.getOrNull(1)?.toFloatOrNull()
+                        if (xRatio == null || yRatio == null) {
+                            null
+                        } else {
+                            PointF(
+                                (xRatio * width).coerceIn(tableRect.left, tableRect.right),
+                                (yRatio * height).coerceIn(tableRect.top, tableRect.bottom)
+                            )
+                        }
+                    }
+                if (points.size >= 2) {
+                    PlanPath(planColors[pathIndex % planColors.size], points.toMutableList())
+                } else {
+                    null
+                }
+            }
+
+        if (restored.isEmpty()) return false
+        planPaths.clear()
+        planPaths.addAll(restored)
+        selectedPlanPathIndex = selectedPlanPathIndex.coerceIn(0, planPaths.lastIndex)
+        return true
+    }
+
+    private fun savePlanPaths() {
+        if (width <= 0 || height <= 0 || planPaths.isEmpty()) return
+        val encoded = planPaths.joinToString("|") { path ->
+            path.points.joinToString(";") { point ->
+                "${point.x / width.toFloat()},${point.y / height.toFloat()}"
+            }
+        }
+        preferences.edit().putString(PREF_PLAN_PATHS, encoded).apply()
+    }
+
     private fun defaultLeftRatio(width: Int, height: Int): Float {
         return if (width > height) 0.175f else 0.08f
     }
@@ -636,12 +869,13 @@ private class ManualGuideView(
         val bottom = height - max(18f, height * 0.025f)
         val top = bottom - buttonHeight
         val closeWidth = min(220f, max(112f, width * 0.18f))
-        val availableWidth = width - side * 2f - closeWidth - gap * 5f
-        val modeWidth = max(88f, min(170f, availableWidth / 3f))
+        val availableWidth = width - side * 2f - closeWidth - gap * 6f
+        val modeWidth = max(76f, min(150f, availableWidth / 4f))
 
         normalButton = RectF(side, top, side + modeWidth, bottom)
         tableButton = RectF(normalButton.right + gap, top, normalButton.right + gap + modeWidth, bottom)
-        lockButton = RectF(tableButton.right + gap, top, tableButton.right + gap + modeWidth, bottom)
+        planButton = RectF(tableButton.right + gap, top, tableButton.right + gap + modeWidth, bottom)
+        lockButton = RectF(planButton.right + gap, top, planButton.right + gap + modeWidth, bottom)
         closeButton = RectF(width - side - closeWidth, top, width - side, bottom)
 
         val secondWidth = min(180f, max(118f, width * 0.16f))
@@ -714,11 +948,17 @@ private class ManualGuideView(
 
     private data class RayHit(val point: PointF, val wall: Wall)
 
+    private data class PlanPath(
+        val color: Int,
+        val points: MutableList<PointF>
+    )
+
     private enum class DragTarget {
         NONE,
         GUIDE,
         AIM,
         BANK,
+        PLAN_POINT,
         TABLE_TOP_LEFT,
         TABLE_TOP_RIGHT,
         TABLE_BOTTOM_LEFT,
@@ -734,7 +974,8 @@ private class ManualGuideView(
 
     private enum class GuideMode {
         NORMAL,
-        TABLE
+        TABLE,
+        PLAN
     }
 
     private enum class Wall {
@@ -756,6 +997,9 @@ private class ManualGuideView(
         private const val LOCKED_BALL_RADIUS = 12f
         private const val TABLE_CORNER_HANDLE_RADIUS = 24f
         private const val TABLE_CORNER_TOUCH_RADIUS = 58f
+        private const val PLAN_POINT_RADIUS = 11f
+        private const val PLAN_LOCKED_POINT_RADIUS = 8f
+        private const val PLAN_POINT_TOUCH_RADIUS = 56f
         private const val EDGE_SNAP_DISTANCE = 42f
         private const val WALL_EPSILON = 1.5f
         private const val RAY_EPSILON = 0.001f
@@ -764,5 +1008,6 @@ private class ManualGuideView(
         private const val PREF_TABLE_RIGHT = "table_right_ratio"
         private const val PREF_TABLE_TOP = "table_top_ratio"
         private const val PREF_TABLE_BOTTOM = "table_bottom_ratio"
+        private const val PREF_PLAN_PATHS = "plan_paths"
     }
 }
