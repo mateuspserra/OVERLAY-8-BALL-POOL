@@ -29,7 +29,7 @@ Builds `release` sao assinados. Para MVP/teste, o projeto usa `app/signing/mvp-r
 
 Em aparelhos Motorola com GameTime, voce pode adicionar o app como atalho lateral e iniciar a leitura durante o jogo. No Android 14+, o app solicita captura do display inteiro para evitar capturar apenas a janela flutuante do atalho. Depois da permissao, o app volta ao jogo antes de iniciar a captura e ignora telas pretas iniciais por alguns segundos para evitar falso bloqueio.
 
-Para reduzir falso bloqueio por tela preta de transicao, use `Pre-iniciar overlay`: ele abre apenas os controles flutuantes. Depois entre no jogo pelo GameTime e toque no botao de iniciar captura no controle flutuante; a captura real so comeca nesse segundo passo.
+Para reduzir falso bloqueio por tela preta de transicao, use `Pre-iniciar overlay`: ele abre apenas os controles flutuantes e manda o app para segundo plano. Depois entre no jogo pelo GameTime e toque no botao de iniciar captura no controle flutuante; a captura real so comeca nesse segundo passo, sem remover o overlay preparado antes da permissao.
 
 Quando o jogo bloquear captura de tela, use `Abrir guia manual` na tela inicial ou o botao de mira no controle flutuante. Ele desenha uma guia ajustavel por cima da tela sem depender de `MediaProjection`. Se o modo automatico receber frames protegidos seguidos, a captura e pausada e a guia manual e aberta automaticamente.
 
@@ -51,3 +51,4 @@ Se a area da mesa nao bater com as cacapas, destrave a guia e arraste os quatro 
 - A trajetoria depende de referencia visual: `aim_line`, `cue_direction`, `target_ball` ou `ghost_ball`.
 - Para producao, use `App Android -> Backend proprio -> API de IA` para nao expor chave no APK.
 - A fisica avancada ainda nao foi implementada. O MVP desenha linha reta ate a primeira colisao detectada ou limite da tela.
+- Para comparar YOLOv8 e YOLO26 no dataset atual, veja `docs/YOLO_MODEL_TESTS.md`.

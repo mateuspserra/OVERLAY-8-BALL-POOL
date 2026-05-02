@@ -294,7 +294,17 @@ class ScreenCaptureService : Service() {
                 response.error != null -> "Erro na API"
                 detections.isNotEmpty() && trajectory != null -> "Trajetoria calculada"
                 detections.isNotEmpty() -> "Deteccao recebida"
-                else -> "Aguardando deteccoes"
+                else -> "Frame capturado, sem objetos"
+            }
+            val detectionSummary = when {
+                !endpointConfigured && response.error != null -> response.error
+                response.error != null -> response.error
+                detections.isEmpty() -> "${workingBitmap.frameDiagnosticSummary()}; ${aiModeText()} retornou 0 objetos"
+                else -> DetectionProcessor.summarizeDetections(
+                    detections,
+                    trajectory,
+                    response.latencyMs
+                )
             }
 
             DetectionStateStore.updateStatus {
@@ -303,15 +313,7 @@ class ScreenCaptureService : Service() {
                     aiBusy = false,
                     systemState = nextState,
                     lastApiLatencyMs = response.latencyMs,
-                    lastDetection = if (!endpointConfigured && response.error != null) {
-                        response.error
-                    } else {
-                        DetectionProcessor.summarizeDetections(
-                            detections,
-                            trajectory,
-                            response.latencyMs
-                        )
-                    },
+                    lastDetection = detectionSummary,
                     lastError = response.error
                 )
             }
@@ -432,6 +434,17 @@ class ScreenCaptureService : Service() {
             provider == "offline"
     }
 
+    private fun aiModeText(): String {
+        val provider = BuildConfig.AI_PROVIDER.trim().ifEmpty {
+            if (BuildConfig.AI_ENDPOINT.isBlank()) "local_heuristic" else "generic_json"
+        }
+        return if (BuildConfig.AI_ENDPOINT.isBlank()) {
+            "IA $provider local"
+        } else {
+            "IA $provider"
+        }
+    }
+
     private fun openManualGuideFallback() {
         runCatching {
             startService(Intent(this, ManualGuideService::class.java))
@@ -440,6 +453,36 @@ class ScreenCaptureService : Service() {
 
     private fun isInInitialCaptureGracePeriod(): Boolean {
         return SystemClock.elapsedRealtime() - captureStartedAtMs < INITIAL_CAPTURE_GRACE_PERIOD_MS
+    }
+
+    private fun Bitmap.frameDiagnosticSummary(): String {
+        val stepX = (width / FRAME_DIAGNOSTIC_SAMPLE_COLUMNS).coerceAtLeast(1)
+        val stepY = (height / FRAME_DIAGNOSTIC_SAMPLE_ROWS).coerceAtLeast(1)
+        var sampled = 0
+        var lumaTotal = 0
+        var minLuma = 255
+        var maxLuma = 0
+
+        var y = stepY / 2
+        while (y < height) {
+            var x = stepX / 2
+            while (x < width) {
+                val pixel = getPixel(x, y)
+                val red = pixel ushr 16 and 0xff
+                val green = pixel ushr 8 and 0xff
+                val blue = pixel and 0xff
+                val luma = (red * 299 + green * 587 + blue * 114) / 1000
+                sampled++
+                lumaTotal += luma
+                if (luma < minLuma) minLuma = luma
+                if (luma > maxLuma) maxLuma = luma
+                x += stepX
+            }
+            y += stepY
+        }
+
+        val avgLuma = if (sampled == 0) 0 else lumaTotal / sampled
+        return "Frame OK ${width}x${height}, brilho $avgLuma, variacao ${maxLuma - minLuma}"
     }
 
     private fun Bitmap.isLikelyProtectedFrame(): Boolean {
@@ -538,5 +581,7 @@ class ScreenCaptureService : Service() {
         private const val PROTECTED_FRAME_MOSTLY_DARK_RATIO = 0.92f
         private const val PROTECTED_FRAME_STOP_THRESHOLD = 10
         private const val INITIAL_CAPTURE_GRACE_PERIOD_MS = 3500L
+        private const val FRAME_DIAGNOSTIC_SAMPLE_COLUMNS = 12
+        private const val FRAME_DIAGNOSTIC_SAMPLE_ROWS = 12
     }
 }

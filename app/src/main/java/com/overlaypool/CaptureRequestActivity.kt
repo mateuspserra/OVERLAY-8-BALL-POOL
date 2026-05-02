@@ -11,7 +11,6 @@ import com.overlaypool.capture.ScreenCaptureService
 import com.overlaypool.core.AppActions
 import com.overlaypool.core.DetectionStateStore
 import com.overlaypool.overlay.FloatingControlService
-import com.overlaypool.overlay.ManualGuideService
 import com.overlaypool.overlay.OverlayService
 import com.overlaypool.permissions.PermissionManager
 
@@ -33,11 +32,10 @@ class CaptureRequestActivity : Activity() {
         if (captureRequested) return
         captureRequested = true
 
-        stopOverlayServices()
         DetectionStateStore.updateStatus {
             it.copy(
                 systemState = "Solicitando captura no jogo",
-                lastDetection = "Aceite a captura e mantenha o jogo em primeiro plano.",
+                lastDetection = "Aceite a captura; o overlay preparado continua ativo.",
                 lastError = null
             )
         }
@@ -64,7 +62,7 @@ class CaptureRequestActivity : Activity() {
         if (resultCode == RESULT_OK && data != null) {
             startCaptureAfterReturningToGame(resultCode, data)
         } else {
-            startOverlayServices()
+            startFloatingControlService()
             DetectionStateStore.updateStatus {
                 it.copy(
                     captureActive = false,
@@ -88,7 +86,7 @@ class CaptureRequestActivity : Activity() {
             ) {
                 requestScreenCapture()
             } else {
-                startOverlayServices()
+                startFloatingControlService()
                 DetectionStateStore.updateStatus {
                     it.copy(
                         systemState = "Permissao de notificacao pendente",
@@ -108,13 +106,12 @@ class CaptureRequestActivity : Activity() {
 
         DetectionStateStore.updateStatus {
             it.copy(
-                systemState = "Voltando ao jogo antes da captura",
-                lastDetection = "A captura comeca apos a tela do jogo aparecer.",
+                systemState = "Iniciando captura no jogo",
+                lastDetection = "A captura comeca sem fechar o jogo.",
                 lastError = null
             )
         }
 
-        moveTaskToBack(true)
         mainHandler.postDelayed({
             startOverlayServices()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -128,18 +125,16 @@ class CaptureRequestActivity : Activity() {
 
     private fun startOverlayServices() {
         startService(Intent(this, OverlayService::class.java))
-        startService(Intent(this, FloatingControlService::class.java))
+        startFloatingControlService()
     }
 
-    private fun stopOverlayServices() {
-        stopService(Intent(this, OverlayService::class.java))
-        stopService(Intent(this, FloatingControlService::class.java))
-        stopService(Intent(this, ManualGuideService::class.java))
+    private fun startFloatingControlService() {
+        startService(Intent(this, FloatingControlService::class.java))
     }
 
     companion object {
         private const val REQUEST_MEDIA_PROJECTION = 1102
         private const val REQUEST_NOTIFICATION_PERMISSION = 1103
-        private const val CAPTURE_START_DELAY_MS = 900L
+        private const val CAPTURE_START_DELAY_MS = 250L
     }
 }

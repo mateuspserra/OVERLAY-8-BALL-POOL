@@ -187,7 +187,7 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
         }
 
         pendingPrepareStart = false
-        startOverlayServices()
+        startFloatingControlService()
         DetectionStateStore.clearDetections()
         DetectionStateStore.updateStatus {
             it.copy(
@@ -197,6 +197,7 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
                 lastDetection = "Entre no jogo e toque em iniciar captura no controle flutuante."
             )
         }
+        moveTaskToBack(true)
     }
 
     private fun startManualGuideFlow() {
@@ -228,6 +229,10 @@ class MainActivity : Activity(), DetectionStateStore.Listener {
 
     private fun startOverlayServices() {
         startService(Intent(this, OverlayService::class.java))
+        startFloatingControlService()
+    }
+
+    private fun startFloatingControlService() {
         startService(Intent(this, FloatingControlService::class.java))
     }
 
