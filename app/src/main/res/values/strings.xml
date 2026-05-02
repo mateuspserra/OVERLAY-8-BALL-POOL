@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Overlay Inteligente</string>
+    <string name="notification_channel_name">Leitura da tela</string>
+    <string name="capture_notification_title">Overlay inteligente ativo</string>
+    <string name="capture_notification_text">Capturando a tela para detectar objetos e desenhar a trajetoria.</string>
+</resources>

@@ -1,0 +1,17 @@
+# Copie este arquivo para local.properties e preencha apenas no ambiente local.
+# Nunca publique chaves reais no repositorio.
+
+# Backend proprio recomendado:
+# AI_PROVIDER=generic_json
+# AI_ENDPOINT=https://seu-backend.example.com/detect
+# AI_API_KEY=
+
+# Roboflow Workflow direto para testes:
+# AI_PROVIDER=roboflow_workflow
+# AI_ENDPOINT=https://serverless.roboflow.com/infer/workflows/<workspace>/<workflow_id>
+# AI_API_KEY=<sua-chave-local>
+
+# Ajustes opcionais:
+# MIN_DETECTION_CONFIDENCE=0.55
+# CAPTURE_INTERVAL_MS=1000
+# MAX_UPLOAD_IMAGE_SIZE=960

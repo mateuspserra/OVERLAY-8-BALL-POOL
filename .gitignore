@@ -1,0 +1,9 @@
+.gradle/
+.idea/
+build/
+local.properties
+captures/
+*.iml
+*.apk
+*.aab
+*.v3-v1.yolov8

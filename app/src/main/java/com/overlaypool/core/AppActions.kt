@@ -1,0 +1,10 @@
+package com.overlaypool.core
+
+object AppActions {
+    const val ACTION_STOP_READING = "com.overlaypool.action.STOP_READING"
+    const val ACTION_TOGGLE_MARKINGS = "com.overlaypool.action.TOGGLE_MARKINGS"
+    const val ACTION_START_CAPTURE = "com.overlaypool.action.START_CAPTURE"
+
+    const val EXTRA_MEDIA_PROJECTION_RESULT_CODE = "extra_media_projection_result_code"
+    const val EXTRA_MEDIA_PROJECTION_DATA = "extra_media_projection_data"
+}
