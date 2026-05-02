@@ -10,4 +10,5 @@ captures/
 *.aab
 *.jks
 *.keystore
+!app/signing/mvp-release.keystore
 *.v3-v1.yolov8

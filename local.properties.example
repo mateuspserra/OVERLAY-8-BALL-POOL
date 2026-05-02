@@ -21,7 +21,8 @@
 
 # Assinatura de release para producao.
 # Mantenha o arquivo de keystore fora do git.
-# Se nao configurar estes valores, o release sera assinado com a debug key para builds de MVP/teste.
+# Se nao configurar estes valores, o release sera assinado com app/signing/mvp-release.keystore
+# para permitir atualizar o app por cima em builds de MVP/teste.
 # RELEASE_STORE_FILE=release.keystore
 # RELEASE_STORE_PASSWORD=<senha-do-keystore>
 # RELEASE_KEY_ALIAS=<alias-da-chave>

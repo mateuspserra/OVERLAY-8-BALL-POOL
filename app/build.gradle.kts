@@ -40,6 +40,8 @@ val hasReleaseSigning = releaseStoreFile?.exists() == true &&
     releaseStorePassword.isNotEmpty() &&
     releaseKeyAlias.isNotEmpty() &&
     releaseKeyPassword.isNotEmpty()
+val mvpReleaseStoreFile = rootProject.file("app/signing/mvp-release.keystore")
+val hasMvpReleaseSigning = mvpReleaseStoreFile.exists()
 
 android {
     namespace = "com.overlaypool"
@@ -49,8 +51,8 @@ android {
         applicationId = "com.overlaypool"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
 
         buildConfigField("String", "AI_ENDPOINT", "\"${escapedStringConfig("AI_ENDPOINT")}\"")
         buildConfigField("String", "AI_API_KEY", "\"${escapedStringConfig("AI_API_KEY")}\"")
@@ -77,13 +79,18 @@ android {
                 storePassword = releaseStorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
+            } else if (hasMvpReleaseSigning) {
+                storeFile = mvpReleaseStoreFile
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
             }
         }
     }
 
     buildTypes {
         getByName("release") {
-            signingConfig = if (hasReleaseSigning) {
+            signingConfig = if (hasReleaseSigning || hasMvpReleaseSigning) {
                 signingConfigs.getByName("release")
             } else {
                 signingConfigs.getByName("debug")

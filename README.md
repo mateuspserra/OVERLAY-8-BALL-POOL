@@ -25,7 +25,7 @@ O app nao abre outro aplicativo dentro dele, nao usa WebView e nao incorpora out
 
 O intervalo inicial de captura e `250ms`. O app tenta iniciar o proximo frame assim que a janela minima permitir, mas nao envia novo frame enquanto a requisicao anterior ainda esta em andamento.
 
-Builds `release` sao assinados. Para MVP/teste, o projeto usa a debug key quando nenhuma keystore de producao esta configurada. Para producao, configure `RELEASE_STORE_FILE`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS` e `RELEASE_KEY_PASSWORD` em `local.properties` ou variaveis de ambiente.
+Builds `release` sao assinados. Para MVP/teste, o projeto usa `app/signing/mvp-release.keystore`, uma chave publica de teste mantida no repositorio para permitir instalar novas versoes por cima das antigas. Para producao, configure `RELEASE_STORE_FILE`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS` e `RELEASE_KEY_PASSWORD` em `local.properties` ou variaveis de ambiente.
 
 ## Observacoes
 
