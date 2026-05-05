@@ -14,7 +14,7 @@ O app nao abre outro aplicativo dentro dele, nao usa WebView e nao incorpora out
 - `AIClient`: camada isolada para backend generico, Roboflow Workflow ou troca futura por modelo local.
 - `DetectionProcessor`: normaliza retorno da IA e filtra por confianca.
 - `TrajectoryEngine`: MVP de linha reta ate primeiro impacto.
-- `DetectionOverlayView`: desenha circulos, caixas, labels, linha e ponto de impacto.
+- `DetectionOverlayView`: desenha circulos, caixas, labels, linha e ponto de impacto..
 
 ## Configuracao local
 
